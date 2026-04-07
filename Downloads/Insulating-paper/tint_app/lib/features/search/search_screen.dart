@@ -240,16 +240,23 @@ class _ResultsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final count = state.items.length;
-    final suffix = state.hasMore ? '（載入中…）' : ' 筆';
+    final loadedCount = state.items.length;
+    final String label;
+    if (state.query.isEmpty) {
+      // 無搜尋時顯示資料庫總筆數，取得前暫顯已載入筆數
+      final total = state.totalCount ?? loadedCount;
+      final suffix = state.hasMore ? '（載入中…）' : ' 筆';
+      label = '共 $total$suffix';
+    } else {
+      final suffix = state.hasMore ? '（還有更多）' : ' 筆';
+      label = '「${state.query}」找到 $loadedCount$suffix';
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
-          state.query.isEmpty
-              ? '共 $count$suffix'
-              : '「${state.query}」找到 $count$suffix',
+          label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.outline,
               ),
