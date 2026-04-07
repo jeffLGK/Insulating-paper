@@ -8,6 +8,10 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
   static Database? _db;
 
+  // Web 平台：記憶體存儲
+  static List<TintProduct> _webStore = [];
+  static List<int> _webFavorites = [];
+
   static const String tableProducts = 'tint_products';
   static const String tableFts = 'tint_products_fts';
   static const String tableFavorites = 'favorites';
@@ -18,19 +22,14 @@ class AppDatabase {
   }
 
   Future<Database> _initDatabase() async {
-    final String fullPath;
-    if (kIsWeb) {
-      fullPath = 'tint_app.db';
-    } else {
-      final dbPath = await getDatabasesPath();
-      fullPath = p.join(dbPath, 'tint_app.db');
-    }
+    final dbPath = await getDatabasesPath();
+    final fullPath = p.join(dbPath, 'tint_app.db');
     return openDatabase(
       fullPath,
       version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
-      onOpen: kIsWeb ? null : (db) async => await db.rawQuery('PRAGMA journal_mode=WAL;'),
+      onOpen: (db) async => await db.rawQuery('PRAGMA journal_mode=WAL;'),
     );
   }
 
@@ -73,11 +72,7 @@ class AppDatabase {
 
     await db.execute('''
       CREATE VIRTUAL TABLE $tableFts USING fts5(
-        brand,
-        model,
-        cert_number,
-        standard,
-        raw_text
+        brand, model, cert_number, standard, raw_text
       )
     ''');
 
@@ -104,6 +99,10 @@ class AppDatabase {
   }
 
   Future<void> upsertProducts(List<TintProduct> products) async {
+    if (kIsWeb) {
+      _webStore = List.from(products);
+      return;
+    }
     final db = await database;
     final batch = db.batch();
     for (final product in products) {
@@ -117,6 +116,14 @@ class AppDatabase {
   }
 
   Future<List<TintProduct>> getAllProducts({int limit = 50, int offset = 0}) async {
+    if (kIsWeb) {
+      final sorted = List<TintProduct>.from(_webStore)
+        ..sort((a, b) {
+          final c = a.brand.compareTo(b.brand);
+          return c != 0 ? c : a.model.compareTo(b.model);
+        });
+      return sorted.skip(offset).take(limit).toList();
+    }
     final db = await database;
     final rows = await db.query(
       tableProducts,
@@ -135,6 +142,26 @@ class AppDatabase {
     if (query.trim().isEmpty) {
       return getAllProducts(limit: limit, offset: offset);
     }
+
+    if (kIsWeb) {
+      final q = query.trim().toLowerCase();
+      var results = _webStore.where((p) {
+        final match = p.brand.toLowerCase().contains(q) ||
+            p.model.toLowerCase().contains(q) ||
+            p.certNumber.toLowerCase().contains(q);
+        if (!match) return false;
+        if (brandFilter != null && brandFilter.isNotEmpty) {
+          return p.brand == brandFilter;
+        }
+        return true;
+      }).toList()
+        ..sort((a, b) {
+          final c = a.brand.compareTo(b.brand);
+          return c != 0 ? c : a.model.compareTo(b.model);
+        });
+      return results.skip(offset).take(limit).toList();
+    }
+
     final db = await database;
     final ftsQuery = query.trim().split(RegExp(r'\s+')).join('* ') + '*';
     String sql = '''
@@ -155,6 +182,10 @@ class AppDatabase {
   }
 
   Future<List<String>> getAllBrands() async {
+    if (kIsWeb) {
+      final brands = _webStore.map((p) => p.brand).toSet().toList()..sort();
+      return brands;
+    }
     final db = await database;
     final rows = await db.rawQuery(
       'SELECT DISTINCT brand FROM $tableProducts ORDER BY brand ASC',
@@ -163,6 +194,13 @@ class AppDatabase {
   }
 
   Future<TintProduct?> getProductById(int id) async {
+    if (kIsWeb) {
+      try {
+        return _webStore.firstWhere((p) => p.id == id);
+      } catch (_) {
+        return null;
+      }
+    }
     final db = await database;
     final rows = await db.query(tableProducts, where: 'id = ?', whereArgs: [id], limit: 1);
     if (rows.isEmpty) return null;
@@ -170,12 +208,17 @@ class AppDatabase {
   }
 
   Future<int> getProductCount() async {
+    if (kIsWeb) return _webStore.length;
     final db = await database;
     final result = await db.rawQuery('SELECT COUNT(*) as cnt FROM $tableProducts');
     return (result.first['cnt'] as int?) ?? 0;
   }
 
   Future<void> clearAll() async {
+    if (kIsWeb) {
+      _webStore.clear();
+      return;
+    }
     final db = await database;
     await db.delete(tableProducts);
   }

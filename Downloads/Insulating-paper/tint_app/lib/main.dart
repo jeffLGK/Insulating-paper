@@ -12,7 +12,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'features/home/home_screen.dart';
@@ -21,10 +20,8 @@ import 'features/sync/sync_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化 SQLite 資料庫工廠
-  if (kIsWeb) {
-    databaseFactory = databaseFactoryFfiWebBasicWebWorker;
-  } else if (Platform.isWindows || Platform.isLinux) {
+  // Web 平台使用記憶體存儲，不需要 SQLite 初始化
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
