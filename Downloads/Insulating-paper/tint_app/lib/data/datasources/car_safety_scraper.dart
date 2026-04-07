@@ -1,73 +1,101 @@
 // lib/data/datasources/car_safety_scraper.dart
 //
-// 負責從 car-safety.org.tw 爬取隔熱紙表格資料。
+// 從 b2c.vscc.org.tw API 抓取隔熱紙認證產品資料。
 //
-// 策略：
-//   1. 送出 HTTP GET 取得 HTML
-//   2. 用 html 套件解析 <table> 結構
-//   3. 把每列映射到 TintProduct
-//
-// 注意：若網站調整 HTML 結構，需更新對應的 CSS selector。
+// API: POST https://b2c.vscc.org.tw/HeatInsulationFilmProductApi/GetProductList
+// 需要帶 Referer/Origin header 才能通過 WAF 驗證。
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:html/parser.dart' as htmlParser;
-import 'package:html/dom.dart';
 
 import '../models/tint_product.dart';
 
 class CarSafetyScraper {
-  static const String _targetUrl =
+  static const String _apiUrl =
+      'https://b2c.vscc.org.tw/HeatInsulationFilmProductApi/GetProductList';
+
+  static const String _referer =
       'https://www.car-safety.org.tw/car_safety/TemplateTwoContent?OpID=536';
 
-  // 請求 timeout
   static const Duration _timeout = Duration(seconds: 30);
 
-  // User-Agent 模擬正常瀏覽器（避免被擋）
   static const Map<String, String> _headers = {
+    'Content-Type': 'application/json',
+    'Referer': _referer,
+    'Origin': 'https://www.car-safety.org.tw',
     'User-Agent':
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
-        'AppleWebKit/605.1.15 (KHTML, like Gecko) '
-        'Version/17.0 Mobile/15E148 Safari/604.1',
-    'Accept': 'text/html,application/xhtml+xml',
-    'Accept-Language': 'zh-TW,zh;q=0.9',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
   };
 
-  // ── 主入口 ──────────────────────────────────────────────────────
+  static const int _pageSize = 100;
 
-  /// 抓取並解析，回傳產品清單
-  /// 若網路失敗或解析失敗，拋出 [ScraperException]
+  /// 抓取所有產品，支援分頁
   Future<ScraperResult> fetchProducts() async {
-    final html = await _fetchHtml(_targetUrl);
-    final products = _parseHtml(html);
+    final products = <TintProduct>[];
+    int pageIndex = 1;
+    int totalPages = 1;
+
+    do {
+      final result = await _fetchPage(pageIndex);
+      products.addAll(result.products);
+      totalPages = result.totalPages;
+      pageIndex++;
+    } while (pageIndex <= totalPages);
+
     return ScraperResult(
       products: products,
       fetchedAt: DateTime.now(),
-      sourceUrl: _targetUrl,
+      sourceUrl: _apiUrl,
     );
   }
 
-  // ── 網路請求 ────────────────────────────────────────────────────
+  Future<_PageResult> _fetchPage(int pageIndex) async {
+    final body = jsonEncode({
+      'manufacturer': '',
+      'brand': '',
+      'productModel': '',
+      'lightTransmittance': '',
+      'labelMethod': '',
+      'certSerial': '',
+      'imageBase64': '',
+      'pageIndex': pageIndex,
+      'pageSize': _pageSize,
+    });
 
-  Future<String> _fetchHtml(String url) async {
     try {
       final response = await http
-          .get(Uri.parse(url), headers: _headers)
+          .post(Uri.parse(_apiUrl), headers: _headers, body: body)
           .timeout(_timeout);
 
       if (response.statusCode != 200) {
         throw ScraperException(
-          'HTTP ${response.statusCode}：無法取得頁面',
+          'HTTP ${response.statusCode}：API 請求失敗',
           code: ScraperErrorCode.httpError,
         );
       }
 
-      // 嘗試 UTF-8，若亂碼再試 Big5
-      try {
-        return utf8.decode(response.bodyBytes);
-      } catch (_) {
-        return latin1.decode(response.bodyBytes);
+      final json = jsonDecode(utf8.decode(response.bodyBytes));
+
+      if (json['success'] != true) {
+        throw ScraperException(
+          'API 回傳失敗：${json['message'] ?? 'unknown'}',
+          code: ScraperErrorCode.apiError,
+        );
       }
+
+      final data = json['data'] as List<dynamic>;
+      final totalPages = (json['totalPages'] as num?)?.toInt() ?? 1;
+
+      final products = data
+          .asMap()
+          .entries
+          .map((e) => _parseProduct(e.value as Map<String, dynamic>, e.key))
+          .whereType<TintProduct>()
+          .toList();
+
+      return _PageResult(products: products, totalPages: totalPages);
     } on ScraperException {
       rethrow;
     } catch (e) {
@@ -78,176 +106,58 @@ class CarSafetyScraper {
     }
   }
 
-  // ── HTML 解析 ───────────────────────────────────────────────────
-
-  List<TintProduct> _parseHtml(String html) {
-    final document = htmlParser.parse(html);
-    final products = <TintProduct>[];
-
-    // 嘗試多種策略尋找資料表格
-    final table = _findDataTable(document);
-    if (table == null) {
-      throw ScraperException(
-        '找不到資料表格，請確認頁面結構是否改變',
-        code: ScraperErrorCode.parseError,
-      );
-    }
-
-    final rows = table.querySelectorAll('tr');
-    if (rows.isEmpty) return products;
-
-    // 解析表頭，動態對應欄位索引
-    final headerRow = rows.first;
-    final columnMap = _parseHeaders(headerRow);
-
-    // 從第二列開始解析資料
-    for (var i = 1; i < rows.length; i++) {
-      final product = _parseRow(rows[i], columnMap, i);
-      if (product != null) products.add(product);
-    }
-
-    if (products.isEmpty) {
-      throw ScraperException(
-        '解析結果為空，頁面可能需要登入或 JS 渲染',
-        code: ScraperErrorCode.emptyResult,
-      );
-    }
-
-    return products;
-  }
-
-  /// 嘗試多種 selector 尋找資料表格
-  Element? _findDataTable(Document document) {
-    // 策略 1：找 class 含 table 的元素
-    for (final sel in [
-      'table.table',
-      'table.list-table',
-      '.content-area table',
-      'main table',
-      '#content table',
-      '.article-content table',
-      'table',               // 最後兜底：頁面上第一個 table
-    ]) {
-      final el = document.querySelector(sel);
-      if (el != null) {
-        // 確認有足夠的列數（至少表頭 + 1 筆資料）
-        if ((el.querySelectorAll('tr').length) >= 2) return el;
-      }
-    }
-    return null;
-  }
-
-  /// 解析表頭列，回傳 { 欄位關鍵字: 欄位索引 } 對應表
-  Map<String, int> _parseHeaders(Element headerRow) {
-    final headers = headerRow.querySelectorAll('th, td');
-    final map = <String, int>{};
-
-    for (var i = 0; i < headers.length; i++) {
-      final text = headers[i].text.trim().toLowerCase();
-
-      if (text.contains('品牌') || text.contains('brand')) {
-        map['brand'] = i;
-      } else if (text.contains('型號') || text.contains('model')) {
-        map['model'] = i;
-      } else if (text.contains('認證') || text.contains('證號') ||
-          text.contains('cert')) {
-        map['cert_number'] = i;
-      } else if (text.contains('可見光') || text.contains('vlt')) {
-        map['visible_light'] = i;
-      } else if (text.contains('紫外線') || text.contains('uv')) {
-        map['uv_rejection'] = i;
-      } else if (text.contains('紅外線') || text.contains('ir')) {
-        map['ir_rejection'] = i;
-      } else if (text.contains('熱能') || text.contains('tser') ||
-          text.contains('隔熱')) {
-        map['heat_rejection'] = i;
-      } else if (text.contains('標準') || text.contains('規範') ||
-          text.contains('standard')) {
-        map['standard'] = i;
-      } else if (text.contains('圖') || text.contains('標籤') ||
-          text.contains('image')) {
-        map['image'] = i;
-      }
-    }
-
-    // 若表頭完全不符，退回索引猜測（對應常見欄位順序）
-    if (map.isEmpty) {
-      map.addAll({
-        'brand': 0, 'model': 1, 'cert_number': 2,
-        'visible_light': 3, 'uv_rejection': 4,
-        'ir_rejection': 5, 'heat_rejection': 6,
-        'standard': 7,
-      });
-    }
-
-    return map;
-  }
-
-  /// 解析單一資料列
-  TintProduct? _parseRow(
-    Element row,
-    Map<String, int> columnMap,
-    int rowIndex,
-  ) {
-    final cells = row.querySelectorAll('td, th');
-    if (cells.isEmpty) return null;
-
-    // 跳過全部空白的列
-    final allText = cells.map((c) => c.text.trim()).join();
-    if (allText.isEmpty) return null;
-
-    String cellText(String key) {
-      final idx = columnMap[key];
-      if (idx == null || idx >= cells.length) return '';
-      return cells[idx].text.trim();
-    }
-
-    // 圖片 URL 提取
-    String? imageUrl;
-    final imgIdx = columnMap['image'];
-    if (imgIdx != null && imgIdx < cells.length) {
-      final img = cells[imgIdx].querySelector('img');
-      imageUrl = img?.attributes['src'];
-      if (imageUrl != null && imageUrl.startsWith('/')) {
-        imageUrl = 'https://www.car-safety.org.tw$imageUrl';
-      }
-    }
-
-    final brand = cellText('brand');
-    final model = cellText('model');
-    // 若品牌和型號都空，跳過
+  TintProduct? _parseProduct(Map<String, dynamic> item, int index) {
+    final brand = (item['Brand'] as String?)?.trim() ?? '';
+    final model = (item['ProductModel'] as String?)?.trim() ?? '';
     if (brand.isEmpty && model.isEmpty) return null;
 
-    final certNumber = cellText('cert_number').isNotEmpty
-        ? cellText('cert_number')
-        : 'ROW_$rowIndex'; // 備援 id，確保 UNIQUE 不衝突
+    final manufacturer = (item['Manufacturer'] as String?)?.trim() ?? '';
+    final certSerial = (item['CertSerial'] as String?)?.trim();
+    final certImageUrl = (item['CertImageUrl'] as String?)?.trim();
+    final lightTransmittance = (item['LightTransmittance'] as String?)?.trim();
+    final labelMethod = (item['LabelMethod'] as String?)?.trim();
+    final expiryDate = (item['ExpiryDate'] as String?)?.trim();
+    final remark = (item['Remark'] as String?)?.trim();
+
+    // 組合備用 cert_number
+    final certNumber = (certSerial != null && certSerial.isNotEmpty)
+        ? certSerial
+        : 'IDX_$index';
+
+    // 取第一張圖片 URL
+    String? imageUrl;
+    if (certImageUrl != null && certImageUrl.isNotEmpty) {
+      imageUrl = certImageUrl.split(',').first.trim();
+    }
 
     return TintProduct(
       brand: brand,
       model: model,
       certNumber: certNumber,
-      visibleLight: cellText('visible_light').isNotEmpty
-          ? cellText('visible_light')
-          : null,
-      uvRejection: cellText('uv_rejection').isNotEmpty
-          ? cellText('uv_rejection')
-          : null,
-      irRejection: cellText('ir_rejection').isNotEmpty
-          ? cellText('ir_rejection')
-          : null,
-      heatRejection: cellText('heat_rejection').isNotEmpty
-          ? cellText('heat_rejection')
-          : null,
-      standard: cellText('standard').isNotEmpty
-          ? cellText('standard')
-          : null,
+      visibleLight: lightTransmittance,
+      uvRejection: null,
+      irRejection: null,
+      heatRejection: null,
+      standard: labelMethod,
       imageUrl: imageUrl,
       updatedAt: DateTime.now(),
+      // 把廠商/有效期限/備註存進 rawText 方便搜尋
+      rawText: [manufacturer, expiryDate, remark]
+          .where((s) => s != null && s.isNotEmpty)
+          .join(' '),
     );
   }
 }
 
-// ── 回傳值 & 例外型別 ──────────────────────────────────────────────
+// ── 內部結果型別 ─────────────────────────────────────────────────
+
+class _PageResult {
+  final List<TintProduct> products;
+  final int totalPages;
+  const _PageResult({required this.products, required this.totalPages});
+}
+
+// ── 公開結果 & 例外型別 ──────────────────────────────────────────
 
 class ScraperResult {
   final List<TintProduct> products;
@@ -266,6 +176,7 @@ class ScraperResult {
 enum ScraperErrorCode {
   networkError,
   httpError,
+  apiError,
   parseError,
   emptyResult,
 }
