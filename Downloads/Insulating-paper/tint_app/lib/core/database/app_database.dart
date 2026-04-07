@@ -1,4 +1,5 @@
-﻿import 'package:sqflite/sqflite.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import '../../data/models/tint_product.dart';
 
@@ -17,14 +18,19 @@ class AppDatabase {
   }
 
   Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final fullPath = p.join(dbPath, 'tint_app.db');
+    final String fullPath;
+    if (kIsWeb) {
+      fullPath = 'tint_app.db';
+    } else {
+      final dbPath = await getDatabasesPath();
+      fullPath = p.join(dbPath, 'tint_app.db');
+    }
     return openDatabase(
       fullPath,
       version: 2,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
-      onOpen: (db) async => await db.execute('PRAGMA journal_mode=WAL;'),
+      onOpen: kIsWeb ? null : (db) async => await db.rawQuery('PRAGMA journal_mode=WAL;'),
     );
   }
 
