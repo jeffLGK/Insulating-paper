@@ -167,7 +167,40 @@ class AppDatabase {
     }
 
     final db = await database;
-    final ftsQuery = query.trim().split(RegExp(r'\s+')).join('* ') + '*';
+    // 策略：
+    // - 含特殊字元（如 -、+、*）→ 用 LIKE 對 brand/model 做字面子字串比對，
+    //   讓 "-k" 找含 "-k" 的品牌/型號，"-" 找含連字號的品牌/型號。
+    // - 純英數字/中日韓 → 用 FTS5 前綴搜尋，效能好且支援中文斷詞。
+    final hasSpecialChars = query.trim()
+        .contains(RegExp(r'[^\w\u4e00-\u9fff\u3040-\u30ff\s]'));
+
+    if (hasSpecialChars) {
+      // 含特殊字元：LIKE 搜 brand + model，只搜用戶可見欄位
+      final likePattern = '%${query.trim()}%';
+      String likeSql = '''
+        SELECT * FROM $tableProducts
+        WHERE (brand LIKE ? OR model LIKE ?)
+      ''';
+      final likeArgs = <dynamic>[likePattern, likePattern];
+      if (brandFilter != null && brandFilter.isNotEmpty) {
+        likeSql += ' AND brand = ?';
+        likeArgs.add(brandFilter);
+      }
+      likeSql += ' ORDER BY brand ASC, model ASC LIMIT ? OFFSET ?';
+      likeArgs.addAll([limit, offset]);
+      final rows = await db.rawQuery(likeSql, likeArgs);
+      return rows.map(TintProduct.fromMap).toList();
+    }
+
+    // 純英數字/中日韓：FTS5 前綴搜尋
+    final tokens = query.trim()
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if (tokens.isEmpty) {
+      return getAllProducts(limit: limit, offset: offset);
+    }
+    final ftsQuery = tokens.map((t) => '$t*').join(' ');
     String sql = '''
       SELECT p.* FROM $tableProducts p
       WHERE p.id IN (
