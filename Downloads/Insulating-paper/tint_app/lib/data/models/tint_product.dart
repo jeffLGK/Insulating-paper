@@ -103,6 +103,19 @@
     );
   }
 
+  /// 解析 image_url 欄位（逗號分隔）回傳所有圖片
+  List<String> get imageUrls {
+    if (imageUrl == null || imageUrl!.isEmpty) return [];
+    return imageUrl!
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
+
+  /// 縮圖用：只取第一張
+  String? get firstImageUrl => imageUrls.isEmpty ? null : imageUrls.first;
+
   @override
   String toString() => 'TintProduct($brand $model, cert: $certNumber)';
 }

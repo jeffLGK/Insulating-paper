@@ -32,13 +32,22 @@ class CarSafetyScraper {
   static const int _pageSize = 100;
 
   /// 抓取所有產品，支援分頁
+  /// 若偵測到回傳資料與上一頁相同（API 分頁失效），提早結束避免重複請求。
   Future<ScraperResult> fetchProducts() async {
     final products = <TintProduct>[];
+    final seenKeys = <String>{};
     int pageIndex = 1;
     int totalPages = 1;
 
     do {
       final result = await _fetchPage(pageIndex);
+
+      // 計算本頁新增的 key 數量，若無新資料代表 API 分頁失效，提早結束
+      final pageKeys = result.products.map((p) => p.certNumber).toSet();
+      final newKeys = pageKeys.difference(seenKeys);
+      if (newKeys.isEmpty) break;
+
+      seenKeys.addAll(pageKeys);
       products.addAll(result.products);
       totalPages = result.totalPages;
       pageIndex++;
@@ -89,9 +98,7 @@ class CarSafetyScraper {
       final totalPages = (json['totalPages'] as num?)?.toInt() ?? 1;
 
       final products = data
-          .asMap()
-          .entries
-          .map((e) => _parseProduct(e.value as Map<String, dynamic>, e.key))
+          .map((e) => _parseProduct(e as Map<String, dynamic>))
           .whereType<TintProduct>()
           .toList();
 
@@ -106,7 +113,7 @@ class CarSafetyScraper {
     }
   }
 
-  TintProduct? _parseProduct(Map<String, dynamic> item, int index) {
+  TintProduct? _parseProduct(Map<String, dynamic> item) {
     final brand = (item['Brand'] as String?)?.trim() ?? '';
     final model = (item['ProductModel'] as String?)?.trim() ?? '';
     if (brand.isEmpty && model.isEmpty) return null;
@@ -119,16 +126,15 @@ class CarSafetyScraper {
     final expiryDate = (item['ExpiryDate'] as String?)?.trim();
     final remark = (item['Remark'] as String?)?.trim();
 
-    // 組合備用 cert_number
+    // 用 manufacturer+brand+model 組合作為穩定唯一鍵，自動去除重複
     final certNumber = (certSerial != null && certSerial.isNotEmpty)
         ? certSerial
-        : 'IDX_$index';
+        : '${manufacturer}_${brand}_$model';
 
-    // 取第一張圖片 URL
-    String? imageUrl;
-    if (certImageUrl != null && certImageUrl.isNotEmpty) {
-      imageUrl = certImageUrl.split(',').first.trim();
-    }
+    // 保留全部圖片 URL（逗號分隔）
+    final imageUrl = (certImageUrl != null && certImageUrl.isNotEmpty)
+        ? certImageUrl
+        : null;
 
     return TintProduct(
       brand: brand,
