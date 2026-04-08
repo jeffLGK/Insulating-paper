@@ -154,9 +154,10 @@ class CarSafetyScraper {
       standard: labelMethod,
       imageUrl: imageUrl,
       updatedAt: DateTime.now(),
-      // 把廠商/有效期限/備註存進 rawText 方便搜尋
+      // 把廠商/有效期限/備註存進 rawText 方便搜尋。
+      // 過濾「---」等純符號佔位符，避免影響 LIKE 搜尋結果。
       rawText: [manufacturer, expiryDate, remark]
-          .where((s) => s != null && s.isNotEmpty)
+          .where((s) => s != null && s.isNotEmpty && !RegExp(r'^[-\s.]+$').hasMatch(s!))
           .join(' '),
     );
   }
