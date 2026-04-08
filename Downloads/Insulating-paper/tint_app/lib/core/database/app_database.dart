@@ -159,7 +159,29 @@ class AppDatabase {
     String? brandFilter,
   }) async {
     if (query.trim().isEmpty) {
-      return getAllProducts(limit: limit, offset: offset);
+      if (brandFilter == null || brandFilter.isEmpty) {
+        return getAllProducts(limit: limit, offset: offset);
+      }
+      // 無搜尋字但有品牌篩選：直接用 brand = ? 過濾
+      if (kIsWeb) {
+        return _webStore
+            .where((p) => p.brand == brandFilter)
+            .toList()
+          ..sort((a, b) {
+            final c = a.brand.compareTo(b.brand);
+            return c != 0 ? c : a.model.compareTo(b.model);
+          });
+      }
+      final db = await database;
+      final rows = await db.query(
+        tableProducts,
+        where: 'brand = ?',
+        whereArgs: [brandFilter],
+        orderBy: 'brand ASC, model ASC',
+        limit: limit,
+        offset: offset,
+      );
+      return rows.map(TintProduct.fromMap).toList();
     }
 
     if (kIsWeb) {
