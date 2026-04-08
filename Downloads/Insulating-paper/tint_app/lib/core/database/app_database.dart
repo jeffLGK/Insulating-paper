@@ -26,7 +26,7 @@ class AppDatabase {
     final fullPath = p.join(dbPath, 'tint_app.db');
     return openDatabase(
       fullPath,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async => await db.rawQuery('PRAGMA journal_mode=WAL;'),
@@ -41,6 +41,44 @@ class AppDatabase {
       // cert_number 改用 manufacturer+brand+model 組合，清除舊的 IDX_X 資料
       await db.delete(tableProducts);
     }
+    if (oldVersion < 4) {
+      // Android 不支援 FTS5，改用 FTS4；重建虛擬表與觸發器
+      await db.execute('DROP TABLE IF EXISTS $tableFts');
+      await db.execute('''
+        DROP TRIGGER IF EXISTS tint_ai
+      ''');
+      await db.execute('DROP TRIGGER IF EXISTS tint_ad');
+      await db.execute('DROP TRIGGER IF EXISTS tint_au');
+      await _createFtsAndTriggers(db);
+    }
+  }
+
+  Future<void> _createFtsAndTriggers(Database db) async {
+    // 使用 FTS4（Android 內建 SQLite 不支援 FTS5）
+    await db.execute('''
+      CREATE VIRTUAL TABLE $tableFts USING fts4(
+        brand, model, cert_number, standard, raw_text
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TRIGGER tint_ai AFTER INSERT ON $tableProducts BEGIN
+        INSERT INTO $tableFts(rowid, brand, model, cert_number, standard, raw_text)
+        VALUES (new.id, new.brand, new.model, new.cert_number, new.standard, new.raw_text);
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER tint_ad AFTER DELETE ON $tableProducts BEGIN
+        DELETE FROM $tableFts WHERE rowid = old.id;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER tint_au AFTER UPDATE ON $tableProducts BEGIN
+        DELETE FROM $tableFts WHERE rowid = old.id;
+        INSERT INTO $tableFts(rowid, brand, model, cert_number, standard, raw_text)
+        VALUES (new.id, new.brand, new.model, new.cert_number, new.standard, new.raw_text);
+      END
+    ''');
   }
 
   Future<void> _createFavoritesTable(Database db) async {
@@ -74,30 +112,7 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_brand ON $tableProducts (brand)');
     await db.execute('CREATE INDEX idx_cert  ON $tableProducts (cert_number)');
 
-    await db.execute('''
-      CREATE VIRTUAL TABLE $tableFts USING fts5(
-        brand, model, cert_number, standard, raw_text
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TRIGGER tint_ai AFTER INSERT ON $tableProducts BEGIN
-        INSERT INTO $tableFts(rowid, brand, model, cert_number, standard, raw_text)
-        VALUES (new.id, new.brand, new.model, new.cert_number, new.standard, new.raw_text);
-      END
-    ''');
-    await db.execute('''
-      CREATE TRIGGER tint_ad AFTER DELETE ON $tableProducts BEGIN
-        DELETE FROM $tableFts WHERE rowid = old.id;
-      END
-    ''');
-    await db.execute('''
-      CREATE TRIGGER tint_au AFTER UPDATE ON $tableProducts BEGIN
-        DELETE FROM $tableFts WHERE rowid = old.id;
-        INSERT INTO $tableFts(rowid, brand, model, cert_number, standard, raw_text)
-        VALUES (new.id, new.brand, new.model, new.cert_number, new.standard, new.raw_text);
-      END
-    ''');
+    await _createFtsAndTriggers(db);
 
     await _createFavoritesTable(db);
   }
