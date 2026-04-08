@@ -141,7 +141,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
     );
 
     try {
-      final isSearch = state.query.trim().isNotEmpty;
+      final isSearch = state.query.trim().isNotEmpty || state.brandFilter != null;
       final result = isSearch
           ? await _repo.search(
               query: state.query,
@@ -151,7 +151,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
             )
           : await _repo.getAll(page: reset ? 0 : state.page, pageSize: _pageSize);
 
-      // 首次載入或重置時取得總筆數
+      // 首次載入或重置時取得總筆數（無搜尋且無品牌篩選才顯示全部總數）
       final totalCount = (reset && !isSearch)
           ? await _repo.getTotalCount()
           : state.totalCount;
