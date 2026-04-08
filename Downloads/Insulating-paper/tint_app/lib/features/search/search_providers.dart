@@ -26,6 +26,7 @@ class SearchState {
   final bool hasMore;
   final int page;
   final String? errorMessage;
+  final int? totalCount; // 資料庫實際總筆數（無搜尋時使用）
 
   const SearchState({
     this.query = '',
@@ -35,6 +36,7 @@ class SearchState {
     this.hasMore = false,
     this.page = 0,
     this.errorMessage,
+    this.totalCount,
   });
 
   SearchState copyWith({
@@ -45,6 +47,7 @@ class SearchState {
     bool? hasMore,
     int? page,
     String? errorMessage,
+    int? totalCount,
     bool clearBrand = false,
     bool clearError = false,
   }) {
@@ -56,6 +59,7 @@ class SearchState {
       hasMore: hasMore ?? this.hasMore,
       page: page ?? this.page,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+      totalCount: totalCount ?? this.totalCount,
     );
   }
 }
@@ -137,14 +141,20 @@ class SearchNotifier extends StateNotifier<SearchState> {
     );
 
     try {
-      final result = state.query.trim().isEmpty
-          ? await _repo.getAll(page: reset ? 0 : state.page, pageSize: _pageSize)
-          : await _repo.search(
+      final isSearch = state.query.trim().isNotEmpty;
+      final result = isSearch
+          ? await _repo.search(
               query: state.query,
               brandFilter: state.brandFilter,
               page: reset ? 0 : state.page,
               pageSize: _pageSize,
-            );
+            )
+          : await _repo.getAll(page: reset ? 0 : state.page, pageSize: _pageSize);
+
+      // 首次載入或重置時取得總筆數
+      final totalCount = (reset && !isSearch)
+          ? await _repo.getTotalCount()
+          : state.totalCount;
 
       final newItems = result.items.map((p) => _ProductItem(
         id: p.id ?? 0,
@@ -161,6 +171,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
         isLoading: false,
         hasMore: result.hasMore,
         page: result.page + 1,
+        totalCount: totalCount,
       );
     } catch (e) {
       state = state.copyWith(
@@ -173,7 +184,19 @@ class SearchNotifier extends StateNotifier<SearchState> {
 
 final searchProvider =
     StateNotifierProvider<SearchNotifier, SearchState>((ref) {
-  return SearchNotifier(ref.read(tintRepositoryProvider));
+  final notifier = SearchNotifier(ref.read(tintRepositoryProvider));
+
+  // 同步成功後自動刷新搜尋結果與品牌清單
+  ref.listen<AsyncValue<SyncState>>(syncStateProvider, (previous, next) {
+    next.whenData((syncState) {
+      if (syncState.status == SyncStatus.success) {
+        notifier.refresh();
+        ref.invalidate(brandsProvider);
+      }
+    });
+  });
+
+  return notifier;
 });
 
 // ── 同步狀態 ────────────────────────────────────────────────────────

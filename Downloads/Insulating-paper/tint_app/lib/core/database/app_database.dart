@@ -26,7 +26,7 @@ class AppDatabase {
     final fullPath = p.join(dbPath, 'tint_app.db');
     return openDatabase(
       fullPath,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async => await db.rawQuery('PRAGMA journal_mode=WAL;'),
@@ -36,6 +36,10 @@ class AppDatabase {
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await _createFavoritesTable(db);
+    }
+    if (oldVersion < 3) {
+      // cert_number 改用 manufacturer+brand+model 組合，清除舊的 IDX_X 資料
+      await db.delete(tableProducts);
     }
   }
 

@@ -240,16 +240,23 @@ class _ResultsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final count = state.items.length;
-    final suffix = state.hasMore ? '（載入中…）' : ' 筆';
+    final loadedCount = state.items.length;
+    final String label;
+    if (state.query.isEmpty) {
+      // 無搜尋時顯示資料庫總筆數，取得前暫顯已載入筆數
+      final total = state.totalCount ?? loadedCount;
+      final suffix = state.hasMore ? '（載入中…）' : ' 筆';
+      label = '共 $total$suffix';
+    } else {
+      final suffix = state.hasMore ? '（還有更多）' : ' 筆';
+      label = '「${state.query}」找到 $loadedCount$suffix';
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
-          state.query.isEmpty
-              ? '共 $count$suffix'
-              : '「${state.query}」找到 $count$suffix',
+          label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.outline,
               ),
@@ -343,8 +350,8 @@ class _ProductCard extends ConsumerWidget {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              // 縮圖
-              _Thumbnail(url: imageUrl),
+              // 縮圖（只顯示第一張）
+              _Thumbnail(url: imageUrl?.split(',').first.trim()),
               const SizedBox(width: 14),
               // 文字資訊
               Expanded(
@@ -614,17 +621,25 @@ class _DetailBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // 標籤圖片
-        if (product.imageUrl != null)
-          Center(
-            child: ClipRRect(
+        // 合格標識圖片（可能有多張）
+        if (product.imageUrls.isNotEmpty)
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            alignment: WrapAlignment.center,
+            children: product.imageUrls.map((url) => ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: CachedNetworkImage(
-                imageUrl: product.imageUrl!,
+                imageUrl: url,
                 height: 180,
                 fit: BoxFit.contain,
+                placeholder: (_, __) => const SizedBox(
+                  width: 120, height: 180,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                errorWidget: (_, __, ___) => const SizedBox.shrink(),
               ),
-            ),
+            )).toList(),
           ),
         const SizedBox(height: 20),
 
