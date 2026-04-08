@@ -167,7 +167,38 @@ class AppDatabase {
     }
 
     final db = await database;
-    final ftsQuery = query.trim().split(RegExp(r'\s+')).join('* ') + '*';
+    // 先將所有非字母/數字/中日韓字元（含 FTS5 特殊字元 - + * " () 等）替換成空白，
+    // 再以空白切分，過濾空字串。
+    // 若清理後無任何 token（如只輸入 -），FTS5 無法處理，
+    // 改用 LIKE 對原始查詢做子字串比對（例如 - 可找到 P-40、K-40 等）。
+    final cleaned = query.trim()
+        .replaceAll(RegExp(r'[^\w\u4e00-\u9fff\u3040-\u30ff]'), ' ');
+    final tokens = cleaned.trim()
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty)
+        .toList();
+
+    if (tokens.isEmpty) {
+      // FTS 無法處理此查詢，改用 LIKE 模糊搜尋原始字串
+      final likePattern = '%${query.trim()}%';
+      String likeSql = '''
+        SELECT * FROM $tableProducts
+        WHERE brand LIKE ? OR model LIKE ? OR cert_number LIKE ? OR raw_text LIKE ?
+      ''';
+      final likeArgs = <dynamic>[
+        likePattern, likePattern, likePattern, likePattern,
+      ];
+      if (brandFilter != null && brandFilter.isNotEmpty) {
+        likeSql += ' AND brand = ?';
+        likeArgs.add(brandFilter);
+      }
+      likeSql += ' ORDER BY brand ASC, model ASC LIMIT ? OFFSET ?';
+      likeArgs.addAll([limit, offset]);
+      final rows = await db.rawQuery(likeSql, likeArgs);
+      return rows.map(TintProduct.fromMap).toList();
+    }
+
+    final ftsQuery = tokens.map((t) => '$t*').join(' ');
     String sql = '''
       SELECT p.* FROM $tableProducts p
       WHERE p.id IN (
