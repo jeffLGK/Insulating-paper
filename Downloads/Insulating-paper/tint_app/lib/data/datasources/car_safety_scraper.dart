@@ -5,7 +5,7 @@
 // API: POST https://b2c.vscc.org.tw/HeatInsulationFilmProductApi/GetProductList
 // 需要帶 Referer/Origin header 才能通過 WAF 驗證。
 
-import 'dart:convert';
+import 'dart:convert' show jsonDecode, utf8;
 import 'package:http/http.dart' as http;
 
 import '../models/tint_product.dart';
@@ -19,8 +19,10 @@ class CarSafetyScraper {
 
   static const Duration _timeout = Duration(seconds: 30);
 
+  // API 必須用 form-encoded（application/x-www-form-urlencoded），
+  // JSON 格式會導致分頁失效，每頁都回傳相同資料。
   static const Map<String, String> _headers = {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/x-www-form-urlencoded',
     'Referer': _referer,
     'Origin': 'https://www.car-safety.org.tw',
     'User-Agent':
@@ -29,7 +31,7 @@ class CarSafetyScraper {
     'Accept': 'application/json, text/plain, */*',
   };
 
-  static const int _pageSize = 100;
+  static const int _pageSize = 20;
 
   /// 抓取所有產品，支援分頁
   /// 若偵測到回傳資料與上一頁相同（API 分頁失效），提早結束避免重複請求。
@@ -61,7 +63,8 @@ class CarSafetyScraper {
   }
 
   Future<_PageResult> _fetchPage(int pageIndex) async {
-    final body = jsonEncode({
+    // 以 form-encoded 格式送出，與網站前端行為一致
+    final body = {
       'manufacturer': '',
       'brand': '',
       'productModel': '',
@@ -69,9 +72,13 @@ class CarSafetyScraper {
       'labelMethod': '',
       'certSerial': '',
       'imageBase64': '',
-      'pageIndex': pageIndex,
-      'pageSize': _pageSize,
-    });
+      'cropX1': '0',
+      'cropY1': '0',
+      'cropX2': '0',
+      'cropY2': '0',
+      'pageIndex': '$pageIndex',
+      'pageSize': '$_pageSize',
+    };
 
     try {
       final response = await http
