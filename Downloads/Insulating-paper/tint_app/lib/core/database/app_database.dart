@@ -26,7 +26,7 @@ class AppDatabase {
     final fullPath = p.join(dbPath, 'tint_app.db');
     return openDatabase(
       fullPath,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onOpen: (db) async => await db.rawQuery('PRAGMA journal_mode=WAL;'),
@@ -50,6 +50,11 @@ class AppDatabase {
       await db.execute('DROP TRIGGER IF EXISTS tint_ad');
       await db.execute('DROP TRIGGER IF EXISTS tint_au');
       await _createFtsAndTriggers(db);
+    }
+    if (oldVersion < 5) {
+      await db.execute(
+        'ALTER TABLE $tableProducts ADD COLUMN image_phash TEXT',
+      );
     }
   }
 
@@ -104,6 +109,7 @@ class AppDatabase {
         standard       TEXT,
         image_url      TEXT,
         image_local_path TEXT,
+        image_phash    TEXT,
         raw_text       TEXT,
         updated_at     TEXT NOT NULL
       )
@@ -317,6 +323,29 @@ class AppDatabase {
       where: 'cert_number = ?',
       whereArgs: [certNumber],
     );
+  }
+
+  Future<void> updateImagePhash(String certNumber, String phash) async {
+    if (kIsWeb) return;
+    final db = await database;
+    await db.update(
+      tableProducts,
+      {'image_phash': phash},
+      where: 'cert_number = ?',
+      whereArgs: [certNumber],
+    );
+  }
+
+  /// 回傳所有有本機圖片的產品（用於圖像比對）
+  Future<List<TintProduct>> getProductsForMatching() async {
+    if (kIsWeb) return [];
+    final db = await database;
+    final rows = await db.query(
+      tableProducts,
+      where: 'image_local_path IS NOT NULL AND image_local_path != ""',
+      orderBy: 'brand ASC, model ASC',
+    );
+    return rows.map(TintProduct.fromMap).toList();
   }
 
   Future<void> clearAll() async {

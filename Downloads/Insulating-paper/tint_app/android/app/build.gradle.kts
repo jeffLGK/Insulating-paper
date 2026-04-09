@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.tint_app"
-        minSdk = flutter.minSdkVersion
+        minSdk = flutter.minSdkVersion  // ML Kit text recognition requires minSdk 21
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -31,6 +31,10 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("debug")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }

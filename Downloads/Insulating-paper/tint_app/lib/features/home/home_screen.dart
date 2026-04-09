@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../search/search_screen.dart';
 import '../cert_search/cert_search_screen.dart';
 import '../favorites/favorites_screen.dart';
+import '../image_match/image_match_screen.dart';
 import '../../core/database/app_database.dart';
 import '../sync/sync_service.dart';
 
@@ -94,6 +95,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           SearchScreen(),
           CertSearchScreen(),
           FavoritesScreen(),
+          ImageMatchScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -115,6 +117,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             icon: Icon(Icons.favorite_outline),
             selectedIcon: Icon(Icons.favorite),
             label: '收藏',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.image_search_outlined),
+            selectedIcon: Icon(Icons.image_search),
+            label: '圖像比對',
           ),
         ],
       ),
