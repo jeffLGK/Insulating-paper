@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Directory, File, Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../core/image/image_hasher.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -215,6 +216,17 @@ class SyncService {
           product.certNumber,
           localPaths.join(','),
         );
+
+        // 計算並儲存第一張圖片的 pHash（僅在尚未計算時執行）
+        if (product.imagePhash == null || product.imagePhash!.isEmpty) {
+          try {
+            final bytes = await File(localPaths.first).readAsBytes();
+            final phash = ImageHasher.hashFromBytes(bytes);
+            if (phash != null) {
+              await _db.updateImagePhash(product.certNumber, phash);
+            }
+          } catch (_) {}
+        }
       }
 
       done++;

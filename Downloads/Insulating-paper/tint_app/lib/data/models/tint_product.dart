@@ -10,6 +10,7 @@
   final String? standard;
   final String? imageUrl;
   final String? imageLocalPath;
+  final String? imagePhash;
   final String? rawText;
   final DateTime? updatedAt;
 
@@ -25,6 +26,7 @@
     this.standard,
     this.imageUrl,
     this.imageLocalPath,
+    this.imagePhash,
     this.rawText,
     this.updatedAt,
   });
@@ -42,6 +44,7 @@
       standard: map['standard'] as String?,
       imageUrl: map['image_url'] as String?,
       imageLocalPath: map['image_local_path'] as String?,
+      imagePhash: map['image_phash'] as String?,
       rawText: map['raw_text'] as String?,
       updatedAt: map['updated_at'] != null
           ? DateTime.tryParse(map['updated_at'] as String)
@@ -62,6 +65,7 @@
       'standard': standard,
       'image_url': imageUrl,
       'image_local_path': imageLocalPath,
+      'image_phash': imagePhash,
       'raw_text': rawText ?? _buildRawText(),
       'updated_at': (updatedAt ?? DateTime.now()).toIso8601String(),
     };
@@ -83,6 +87,7 @@
     String? standard,
     String? imageUrl,
     String? imageLocalPath,
+    String? imagePhash,
     String? rawText,
     DateTime? updatedAt,
   }) {
@@ -98,6 +103,7 @@
       standard: standard ?? this.standard,
       imageUrl: imageUrl ?? this.imageUrl,
       imageLocalPath: imageLocalPath ?? this.imageLocalPath,
+      imagePhash: imagePhash ?? this.imagePhash,
       rawText: rawText ?? this.rawText,
       updatedAt: updatedAt ?? this.updatedAt,
     );
