@@ -2,6 +2,8 @@
 //
 // 關鍵字搜尋畫面：搜尋框 + 品牌篩選 + 無限捲動列表
 
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -16,6 +18,7 @@ import '../comparison/comparison_screen.dart';
 import 'advanced_filters_providers.dart';
 import 'advanced_filters_sheet.dart';
 import '../../data/models/tint_product.dart';
+import '../../data/datasources/car_safety_scraper.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -200,11 +203,14 @@ class _BrandFilterChips extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final brands = ref.watch(brandsProvider);
+    final brandCounts = ref.watch(brandCountsProvider);
     final current = ref.watch(searchProvider).brandFilter;
 
     return brands.when(
       data: (list) {
         if (list.isEmpty) return const SizedBox.shrink();
+        // 取得筆數 Map（若尚未載入則為空 Map）
+        final counts = brandCounts.valueOrNull ?? {};
         return SizedBox(
           height: 40,
           child: ListView.separated(
@@ -216,8 +222,15 @@ class _BrandFilterChips extends ConsumerWidget {
               final isAll = i == 0;
               final brand = isAll ? null : list[i - 1];
               final selected = isAll ? current == null : current == brand;
+              final String chipLabel;
+              if (isAll) {
+                chipLabel = '全部';
+              } else {
+                final cnt = counts[brand!];
+                chipLabel = cnt != null ? '$brand ($cnt筆)' : brand;
+              }
               return FilterChip(
-                label: Text(isAll ? '全部' : brand!),
+                label: Text(chipLabel),
                 selected: selected,
                 onSelected: (_) {
                   ref.read(searchProvider.notifier).setBrandFilter(brand);
@@ -303,6 +316,7 @@ class _ProductList extends StatelessWidget {
             visibleLight: item.visibleLight,
             heatRejection: item.heatRejection,
             imageUrl: item.imageUrl,
+            imageLocalPath: item.imageLocalPath,
           ),
         );
       },
@@ -319,6 +333,7 @@ class _ProductCard extends ConsumerWidget {
   final String? visibleLight;
   final String? heatRejection;
   final String? imageUrl;
+  final String? imageLocalPath;
 
   const _ProductCard({
     required this.id,
@@ -328,6 +343,7 @@ class _ProductCard extends ConsumerWidget {
     this.visibleLight,
     this.heatRejection,
     this.imageUrl,
+    this.imageLocalPath,
   });
 
   @override
@@ -350,19 +366,34 @@ class _ProductCard extends ConsumerWidget {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              // 縮圖（只顯示第一張）
-              _Thumbnail(url: imageUrl?.split(',').first.trim()),
+              // 縮圖（優先使用本機已下載圖片）
+              _Thumbnail(
+                localPath: imageLocalPath,
+                url: imageUrl?.split(',').first.trim(),
+              ),
               const SizedBox(width: 14),
               // 文字資訊
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '$brand  $model',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: brand,
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
+                          TextSpan(
+                            text: '  $model',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ],
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -380,14 +411,14 @@ class _ProductCard extends ConsumerWidget {
                           _StatChip(
                             label: '可見光',
                             value: visibleLight!,
-                            color: Colors.blue.shade100,
+                            color: _visibleLightColor(visibleLight!),
                           ),
                         if (heatRejection != null) ...[
                           const SizedBox(width: 6),
                           _StatChip(
                             label: '隔熱',
                             value: heatRejection!,
-                            color: Colors.orange.shade100,
+                            color: Colors.deepOrange.shade400,
                           ),
                         ],
                       ],
@@ -449,24 +480,44 @@ class _ProductCard extends ConsumerWidget {
 }
 
 class _Thumbnail extends StatelessWidget {
+  final String? localPath;
   final String? url;
-  const _Thumbnail({this.url});
+  const _Thumbnail({this.localPath, this.url});
 
   @override
   Widget build(BuildContext context) {
+    // 優先使用本機已下載的圖片，避免重複連網
+    if (!kIsWeb && localPath != null) {
+      final file = File(localPath!);
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          file,
+          width: 56,
+          height: 56,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _networkOrPlaceholder(context),
+        ),
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: url != null
-          ? CachedNetworkImage(
-              imageUrl: url!,
-              width: 56,
-              height: 56,
-              fit: BoxFit.cover,
-              placeholder: (_, __) => _placeholder(context),
-              errorWidget: (_, __, ___) => _placeholder(context),
-            )
-          : _placeholder(context),
+      child: _networkOrPlaceholder(context),
     );
+  }
+
+  Widget _networkOrPlaceholder(BuildContext context) {
+    if (url != null) {
+      return CachedNetworkImage(
+        imageUrl: url!,
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => _placeholder(context),
+        errorWidget: (_, __, ___) => _placeholder(context),
+      );
+    }
+    return _placeholder(context);
   }
 
   Widget _placeholder(BuildContext context) {
@@ -477,6 +528,16 @@ class _Thumbnail extends StatelessWidget {
       child: const Icon(Icons.local_car_wash, size: 28),
     );
   }
+}
+
+/// 依可見光百分比回傳對比色
+Color _visibleLightColor(String value) {
+  final numStr = value.replaceAll(RegExp(r'[^0-9.]'), '');
+  final pct = double.tryParse(numStr);
+  if (pct == null) return Colors.blueGrey.shade600;
+  if (pct >= 70) return Colors.green.shade600;   // 70% 以上：綠色（高透光）
+  if (pct >= 40) return Colors.amber.shade700;   // 40~70%：橘黃色（中透光）
+  return Colors.red.shade600;                     // 40% 以下：紅色（低透光）
 }
 
 class _StatChip extends StatelessWidget {
@@ -492,6 +553,10 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 深色背景用白字，淺色背景用黑字
+    final textColor = color.computeLuminance() > 0.4
+        ? Colors.black87
+        : Colors.white;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -500,16 +565,53 @@ class _StatChip extends StatelessWidget {
       ),
       child: Text(
         '$label $value',
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+        ),
       ),
     );
   }
 }
 
 // ── 空狀態 ──────────────────────────────────────────────────────────
-class _EmptyState extends StatelessWidget {
+class _EmptyState extends StatefulWidget {
   final String query;
   const _EmptyState({required this.query});
+
+  @override
+  State<_EmptyState> createState() => _EmptyStateState();
+}
+
+class _EmptyStateState extends State<_EmptyState> {
+  bool _fetchingMeta = false;
+
+  Future<void> _onDownloadPressed() async {
+    if (_fetchingMeta) return;
+    setState(() => _fetchingMeta = true);
+
+    ScraperMetadata? meta;
+    String? errorMsg;
+    try {
+      meta = await CarSafetyScraper().fetchMetadata();
+    } catch (e) {
+      errorMsg = e.toString();
+    } finally {
+      if (mounted) setState(() => _fetchingMeta = false);
+    }
+
+    if (!mounted) return;
+
+    if (errorMsg != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('無法取得資料資訊：$errorMsg')),
+      );
+      return;
+    }
+
+    await _confirmAndSync(context, meta!);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -521,15 +623,20 @@ class _EmptyState extends StatelessWidget {
               color: Theme.of(context).colorScheme.outline),
           const SizedBox(height: 16),
           Text(
-            query.isEmpty ? '資料庫尚無資料，請先同步' : '找不到「$query」的相關資料',
+            widget.query.isEmpty ? '資料庫尚無資料，請先同步' : '找不到「${widget.query}」的相關資料',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          if (query.isEmpty) ...[
+          if (widget.query.isEmpty) ...[
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: () => SyncService.instance.syncNow(),
-              icon: const Icon(Icons.sync),
-              label: const Text('立即下載'),
+              onPressed: _fetchingMeta ? null : _onDownloadPressed,
+              icon: _fetchingMeta
+                  ? const SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.sync),
+              label: Text(_fetchingMeta ? '查詢中...' : '立即下載'),
             ),
           ],
         ],
@@ -560,20 +667,180 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-// ── 同步按鈕 ────────────────────────────────────────────────────────
-class _SyncButton extends StatelessWidget {
+// ── 下載進度對話框 ───────────────────────────────────────────────────
+class _SyncProgressDialog extends ConsumerStatefulWidget {
+  const _SyncProgressDialog();
+
+  @override
+  ConsumerState<_SyncProgressDialog> createState() => _SyncProgressDialogState();
+}
+
+class _SyncProgressDialogState extends ConsumerState<_SyncProgressDialog> {
+  @override
+  Widget build(BuildContext context) {
+    // 監聽完成/失敗 → 自動關閉對話框
+    ref.listen<AsyncValue<SyncState>>(syncStateProvider, (_, next) {
+      next.whenData((state) {
+        if ((state.status == SyncStatus.success ||
+                state.status == SyncStatus.failed) &&
+            mounted &&
+            Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
+      });
+    });
+
+    final syncState = ref.watch(syncStateProvider);
+
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.cloud_download_outlined),
+            SizedBox(width: 8),
+            Text('更新資料中'),
+          ],
+        ),
+        content: syncState.when(
+          data: (state) {
+            final progress = state.progress > 0 ? state.progress : null;
+            final msg = state.progressMessage ?? state.message ?? '處理中...';
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LinearProgressIndicator(value: progress),
+                const SizedBox(height: 12),
+                Text(msg),
+                if (progress != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '${(progress * 100).toStringAsFixed(0)}%',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                  ),
+                ],
+              ],
+            );
+          },
+          loading: () => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              LinearProgressIndicator(),
+              SizedBox(height: 12),
+              Text('準備中...'),
+            ],
+          ),
+          error: (_, __) => const Text('發生錯誤'),
+        ),
+      ),
+    );
+  }
+}
+
+/// 顯示確認對話框，確認後啟動下載並顯示進度
+Future<void> _confirmAndSync(BuildContext context, ScraperMetadata meta) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('確認更新資料'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.storage_outlined, size: 20),
+              const SizedBox(width: 8),
+              Text('線上資料總筆數：${meta.totalCount} 筆'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.access_time, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                '發布時間：${DateFormat('yyyy-MM-dd HH:mm').format(meta.fetchedAt)}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text('確定要下載更新嗎？（含圖片下載，需要一些時間）'),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('確認下載'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed == true && context.mounted) {
+    SyncService.instance.syncNow();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _SyncProgressDialog(),
+    );
+  }
+}
+
+// ── 同步按鈕（含下載前確認對話框）───────────────────────────────────
+class _SyncButton extends StatefulWidget {
   final SyncState state;
   const _SyncButton({required this.state});
 
   @override
+  State<_SyncButton> createState() => _SyncButtonState();
+}
+
+class _SyncButtonState extends State<_SyncButton> {
+  bool _fetchingMeta = false;
+
+  Future<void> _onPressed() async {
+    if (widget.state.status == SyncStatus.syncing || _fetchingMeta) return;
+
+    setState(() => _fetchingMeta = true);
+
+    ScraperMetadata? meta;
+    String? errorMsg;
+
+    try {
+      meta = await CarSafetyScraper().fetchMetadata();
+    } catch (e) {
+      errorMsg = e.toString();
+    } finally {
+      if (mounted) setState(() => _fetchingMeta = false);
+    }
+
+    if (!mounted) return;
+
+    if (errorMsg != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('無法取得資料資訊：$errorMsg')),
+      );
+      return;
+    }
+
+    await _confirmAndSync(context, meta!);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isSyncing = state.status == SyncStatus.syncing;
+    final isBusy = widget.state.status == SyncStatus.syncing || _fetchingMeta;
     return IconButton(
-      tooltip: isSyncing ? '同步中...' : '立即更新資料',
-      onPressed: isSyncing
-          ? null
-          : () => SyncService.instance.syncNow(),
-      icon: isSyncing
+      tooltip: isBusy ? '處理中...' : '立即更新資料',
+      onPressed: isBusy ? null : _onPressed,
+      icon: isBusy
           ? const SizedBox(
               width: 20,
               height: 20,
@@ -618,28 +885,43 @@ class _DetailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 決定顯示圖片的來源：本機路徑優先，沒有再用網路 URL
+    final localPaths = product.imageLocalPaths;
+    final networkUrls = product.imageUrls;
+    final hasLocalImages = !kIsWeb && localPaths.isNotEmpty;
+
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // 合格標識圖片（可能有多張）
-        if (product.imageUrls.isNotEmpty)
+        // 合格標識圖片（優先使用本機已下載圖片）
+        if (hasLocalImages || networkUrls.isNotEmpty)
           Wrap(
             spacing: 12,
             runSpacing: 12,
             alignment: WrapAlignment.center,
-            children: product.imageUrls.map((url) => ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
-                imageUrl: url,
-                height: 180,
-                fit: BoxFit.contain,
-                placeholder: (_, __) => const SizedBox(
-                  width: 120, height: 180,
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                errorWidget: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            )).toList(),
+            children: hasLocalImages
+                ? localPaths.map((path) => ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(path),
+                        height: 180,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
+                    )).toList()
+                : networkUrls.map((url) => ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: url,
+                        height: 180,
+                        fit: BoxFit.contain,
+                        placeholder: (_, __) => const SizedBox(
+                          width: 120, height: 180,
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                        errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                      ),
+                    )).toList(),
           ),
         const SizedBox(height: 20),
 

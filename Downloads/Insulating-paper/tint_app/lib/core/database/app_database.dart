@@ -267,6 +267,26 @@ class AppDatabase {
     return rows.map((r) => r['brand'] as String).toList();
   }
 
+  /// 各廠牌名稱 + 該廠牌的產品筆數
+  Future<Map<String, int>> getBrandCounts() async {
+    if (kIsWeb) {
+      final counts = <String, int>{};
+      for (final p in _webStore) {
+        counts[p.brand] = (counts[p.brand] ?? 0) + 1;
+      }
+      return Map.fromEntries(
+        counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key)),
+      );
+    }
+    final db = await database;
+    final rows = await db.rawQuery(
+      'SELECT brand, COUNT(*) as cnt FROM $tableProducts GROUP BY brand ORDER BY brand ASC',
+    );
+    return {
+      for (final r in rows) r['brand'] as String: (r['cnt'] as int),
+    };
+  }
+
   Future<TintProduct?> getProductById(int id) async {
     if (kIsWeb) {
       try {
@@ -286,6 +306,17 @@ class AppDatabase {
     final db = await database;
     final result = await db.rawQuery('SELECT COUNT(*) as cnt FROM $tableProducts');
     return (result.first['cnt'] as int?) ?? 0;
+  }
+
+  Future<void> updateImageLocalPath(String certNumber, String localPath) async {
+    if (kIsWeb) return;
+    final db = await database;
+    await db.update(
+      tableProducts,
+      {'image_local_path': localPath},
+      where: 'cert_number = ?',
+      whereArgs: [certNumber],
+    );
   }
 
   Future<void> clearAll() async {

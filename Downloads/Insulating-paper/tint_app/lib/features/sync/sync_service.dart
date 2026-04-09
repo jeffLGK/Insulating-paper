@@ -1,12 +1,16 @@
-﻿import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:async';
+import 'dart:io' show Directory, File, Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../../core/database/app_database.dart';
 import '../../data/datasources/car_safety_scraper.dart';
+import '../../data/models/tint_product.dart';
 
 const String kSyncTaskName = 'tint_weekly_sync';
 const String kSyncTaskTag = 'tint_sync';
@@ -30,12 +34,17 @@ class SyncState {
   final String? message;
   final int? newCount;
   final DateTime? syncedAt;
+  /// 0.0 ~ 1.0，null 或 0 代表不確定進度（indeterminate）
+  final double progress;
+  final String? progressMessage;
 
   const SyncState({
     required this.status,
     this.message,
     this.newCount,
     this.syncedAt,
+    this.progress = 0.0,
+    this.progressMessage,
   });
 
   static const idle = SyncState(status: SyncStatus.idle);
@@ -96,12 +105,24 @@ class SyncService {
 
     _emit(SyncState(
       status: silent ? SyncStatus.idle : SyncStatus.syncing,
-      message: 'Downloading...',
+      message: '下載資料中...',
+      progressMessage: '正在取得產品資料...',
+      progress: 0.0,
     ));
 
     try {
       final scraperResult = await _scraper.fetchProducts();
+
+      _emit(SyncState(
+        status: silent ? SyncStatus.idle : SyncStatus.syncing,
+        message: '儲存資料中...',
+        progressMessage: '正在儲存 ${scraperResult.count} 筆資料...',
+        progress: 0.1,
+      ));
       await _db.upsertProducts(scraperResult.products);
+
+      // 下載所有產品圖片到本機
+      await _downloadImages(scraperResult.products, silent: silent);
 
       final prefs = await SharedPreferences.getInstance();
       final nowStr = DateTime.now().toIso8601String();
@@ -141,6 +162,70 @@ class SyncService {
       );
       _emit(state);
       return SyncResult.failure(e.toString());
+    }
+  }
+
+  /// 下載所有產品圖片到本機儲存，並更新 DB 中的 image_local_path
+  Future<void> _downloadImages(
+    List<TintProduct> products, {
+    bool silent = false,
+  }) async {
+    if (kIsWeb) return;
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final imagesDir = Directory(p.join(appDir.path, 'tint_images'));
+    if (!await imagesDir.exists()) {
+      await imagesDir.create(recursive: true);
+    }
+
+    // 只計算有圖片的產品數，用於進度計算
+    final withImages = products.where((p) => p.imageUrls.isNotEmpty).toList();
+    final total = withImages.length;
+    int done = 0;
+
+    for (final product in withImages) {
+      final urls = product.imageUrls;
+      final localPaths = <String>[];
+
+      for (final url in urls) {
+        try {
+          final filename = '${url.hashCode.abs()}.jpg';
+          final localPath = p.join(imagesDir.path, filename);
+          final file = File(localPath);
+
+          if (!await file.exists()) {
+            final resp = await http
+                .get(Uri.parse(url))
+                .timeout(const Duration(seconds: 15));
+            if (resp.statusCode == 200) {
+              await file.writeAsBytes(resp.bodyBytes);
+            }
+          }
+
+          if (await file.exists()) {
+            localPaths.add(localPath);
+          }
+        } catch (_) {
+          // 單張圖片下載失敗不影響整體流程
+        }
+      }
+
+      if (localPaths.isNotEmpty) {
+        await _db.updateImageLocalPath(
+          product.certNumber,
+          localPaths.join(','),
+        );
+      }
+
+      done++;
+      if (!silent && total > 0) {
+        _emit(SyncState(
+          status: SyncStatus.syncing,
+          message: '下載圖片中...',
+          progress: 0.1 + 0.9 * (done / total),
+          progressMessage: '下載圖片 $done / $total',
+        ));
+      }
     }
   }
 

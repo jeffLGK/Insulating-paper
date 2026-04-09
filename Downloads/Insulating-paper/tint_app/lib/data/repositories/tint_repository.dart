@@ -55,6 +55,9 @@ class TintRepository {
   /// 取得所有品牌（供篩選下拉清單）
   Future<List<String>> getBrands() => _db.getAllBrands();
 
+  /// 取得各廠牌名稱與其產品筆數
+  Future<Map<String, int>> getBrandCounts() => _db.getBrandCounts();
+
   /// 依 id 取單筆詳細資料
   Future<TintProduct?> getById(int id) => _db.getProductById(id);
 

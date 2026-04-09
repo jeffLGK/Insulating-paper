@@ -33,6 +33,18 @@ class CarSafetyScraper {
 
   static const int _pageSize = 20;
 
+  /// 只取第一頁 metadata（總筆數估計、查詢時間），不下載全部資料
+  /// 用於下載前顯示確認資訊給使用者
+  Future<ScraperMetadata> fetchMetadata() async {
+    final result = await _fetchPage(1);
+    // API 只回傳 totalPages，總筆數為估算值
+    final totalCount = result.totalPages * _pageSize;
+    return ScraperMetadata(
+      totalCount: totalCount,
+      fetchedAt: DateTime.now(),
+    );
+  }
+
   /// 抓取所有產品，支援分頁
   /// 若偵測到回傳資料與上一頁相同（API 分頁失效），提早結束避免重複請求。
   Future<ScraperResult> fetchProducts() async {
@@ -62,7 +74,29 @@ class CarSafetyScraper {
     );
   }
 
-  Future<_PageResult> _fetchPage(int pageIndex) async {
+  /// 依合格標識序號線上查詢（支援 % 萬用字元）
+  Future<List<TintProduct>> searchByCertSerial(String certSerial) async {
+    final products = <TintProduct>[];
+    final seenKeys = <String>{};
+    int pageIndex = 1;
+    int totalPages = 1;
+
+    do {
+      final result = await _fetchPage(pageIndex, certSerial: certSerial);
+      final pageKeys = result.products.map((p) => p.certNumber).toSet();
+      final newKeys = pageKeys.difference(seenKeys);
+      if (newKeys.isEmpty) break;
+
+      seenKeys.addAll(pageKeys);
+      products.addAll(result.products);
+      totalPages = result.totalPages;
+      pageIndex++;
+    } while (pageIndex <= totalPages);
+
+    return products;
+  }
+
+  Future<_PageResult> _fetchPage(int pageIndex, {String certSerial = ''}) async {
     // 以 form-encoded 格式送出，與網站前端行為一致
     final body = {
       'manufacturer': '',
@@ -70,7 +104,7 @@ class CarSafetyScraper {
       'productModel': '',
       'lightTransmittance': '',
       'labelMethod': '',
-      'certSerial': '',
+      'certSerial': certSerial,
       'imageBase64': '',
       'cropX1': '0',
       'cropY1': '0',
@@ -185,6 +219,16 @@ class ScraperResult {
   });
 
   int get count => products.length;
+}
+
+class ScraperMetadata {
+  final int totalCount;
+  final DateTime fetchedAt;
+
+  const ScraperMetadata({
+    required this.totalCount,
+    required this.fetchedAt,
+  });
 }
 
 enum ScraperErrorCode {

@@ -116,6 +116,20 @@
   /// 縮圖用：只取第一張
   String? get firstImageUrl => imageUrls.isEmpty ? null : imageUrls.first;
 
+  /// 解析 image_local_path 欄位（逗號分隔）回傳所有本機圖片路徑
+  List<String> get imageLocalPaths {
+    if (imageLocalPath == null || imageLocalPath!.isEmpty) return [];
+    return imageLocalPath!
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
+
+  /// 縮圖用：只取第一張本機路徑
+  String? get firstImageLocalPath =>
+      imageLocalPaths.isEmpty ? null : imageLocalPaths.first;
+
   @override
   String toString() => 'TintProduct($brand $model, cert: $certNumber)';
 }

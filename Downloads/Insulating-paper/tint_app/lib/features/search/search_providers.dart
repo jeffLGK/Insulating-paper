@@ -17,6 +17,11 @@ final brandsProvider = FutureProvider<List<String>>((ref) async {
   return ref.read(tintRepositoryProvider).getBrands();
 });
 
+// ── 各廠牌筆數 Map<品牌名稱, 筆數> ─────────────────────────────────
+final brandCountsProvider = FutureProvider<Map<String, int>>((ref) async {
+  return ref.read(tintRepositoryProvider).getBrandCounts();
+});
+
 // ── 搜尋狀態 ────────────────────────────────────────────────────────
 class SearchState {
   final String query;
@@ -73,6 +78,7 @@ class _ProductItem {
   final String? visibleLight;
   final String? heatRejection;
   final String? imageUrl;
+  final String? imageLocalPath;
 
   const _ProductItem({
     required this.id,
@@ -82,6 +88,7 @@ class _ProductItem {
     this.visibleLight,
     this.heatRejection,
     this.imageUrl,
+    this.imageLocalPath,
   });
 }
 
@@ -164,6 +171,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
         visibleLight: p.visibleLight,
         heatRejection: p.heatRejection,
         imageUrl: p.imageUrl,
+        imageLocalPath: p.firstImageLocalPath,
       )).toList();
 
       state = state.copyWith(
@@ -192,6 +200,7 @@ final searchProvider =
       if (syncState.status == SyncStatus.success) {
         notifier.refresh();
         ref.invalidate(brandsProvider);
+        ref.invalidate(brandCountsProvider);
       }
     });
   });
