@@ -85,47 +85,61 @@ class ParsedLabel {
   /// OCR 有擷取到有效內容
   bool get hasContent => tokens.isNotEmpty;
 
+  /// 是否辨識到 SA\d+ 或 FA\d+ 格式的 token（專業機構印製序號）
+  bool get isProfessionalSerialFormat {
+    final pattern = RegExp(r'^(SA|FA)\d+$', caseSensitive: false);
+    return tokens.any((t) => pattern.hasMatch(t));
+  }
+
   /// 品牌/型號 token 數量
   int get tokenCount => tokens.length;
 
-  /// 對每個資料庫產品計算 OCR 匹配分數（0.0 ~ 1.0）
+  /// 去除連字號、空格等所有非英數字符號，僅保留英數字，用於寬鬆比對。
+  /// 例："V-KOOL" → "VKOOL"、"3M" → "3M"、"CS-35" → "CS35"
+  static String _normalize(String s) =>
+      s.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+  /// 對每個資料庫產品計算 OCR 匹配分數（0.0 ~ 1.0）。
+  ///
+  /// 比對前先正規化（去除連字號/空格等），確保：
+  ///   OCR 讀到 "VKOOL" 能匹配資料庫 "V-KOOL"
+  ///   OCR 讀到 "CS35"  能匹配資料庫 "CS-35"
   double scoreProduct(String brand, String model) {
     if (tokens.isEmpty) return 0.0;
 
-    final brandUp = brand.toUpperCase();
-    final modelUp = model.toUpperCase();
+    // 正規化品牌與型號
+    final normBrand = _normalize(brand);
+    final normModel = _normalize(model);
 
     int matched = 0;
     for (final token in tokens) {
-      // 完整包含 token
-      if (brandUp.contains(token) || modelUp.contains(token)) {
+      final normToken = _normalize(token);
+      if (normToken.isEmpty) continue;
+
+      // ① 正規化後 contains 比對（主要路徑）
+      if (normBrand.contains(normToken) || normModel.contains(normToken)) {
         matched++;
         continue;
       }
-      // token 包含品牌或型號（應對 OCR 多餘字元）
-      if (token.contains(brandUp) || token.contains(modelUp)) {
+      // ② token 較長，包含了品牌或型號（應對 OCR 多餘字元）
+      if (normToken.contains(normBrand) || normToken.contains(normModel)) {
         matched++;
         continue;
       }
-      // 容錯：O ↔ 0 互換
-      final fuzzy = token
-          .replaceAll('0', 'O')
-          .replaceAll('O', '0');
-      if (brandUp.contains(fuzzy) || modelUp.contains(fuzzy) ||
-          brandUp.replaceAll('0', 'O').contains(token) ||
-          modelUp.replaceAll('0', 'O').contains(token)) {
+      // ③ 容錯：O ↔ 0 互換（如 "O" 被 OCR 讀成 "0"）
+      final fuzzyToken = normToken.replaceAll('0', 'O');
+      final fuzzyBrand = normBrand.replaceAll('0', 'O');
+      final fuzzyModel = normModel.replaceAll('0', 'O');
+      if (fuzzyBrand.contains(fuzzyToken) || fuzzyModel.contains(fuzzyToken) ||
+          fuzzyToken.contains(fuzzyBrand) || fuzzyToken.contains(fuzzyModel)) {
         matched++;
       }
     }
 
     if (matched == 0) return 0.0;
 
-    // 基本分：matched / total tokens
-    double score = matched / tokens.length;
-
-    // VLT 加分：若資料庫產品的可見光透過率與 OCR 解析值接近
-    // （此處不傳入 visibleLight，由呼叫方加分）
-    return min(score, 1.0);
+    // 分數：命中 token 數 / 全部 token 數
+    return min(matched / tokens.length, 1.0);
   }
 
   @override

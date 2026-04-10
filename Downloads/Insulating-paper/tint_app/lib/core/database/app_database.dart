@@ -235,7 +235,7 @@ class AppDatabase {
       return rows.map(TintProduct.fromMap).toList();
     }
 
-    // 純英數字/中日韓：FTS5 前綴搜尋
+    // 純英數字/中日韓：FTS4 前綴搜尋（精確命中）+ LIKE 補全子字串命中
     final tokens = query.trim()
         .split(RegExp(r'\s+'))
         .where((t) => t.isNotEmpty)
@@ -244,21 +244,50 @@ class AppDatabase {
       return getAllProducts(limit: limit, offset: offset);
     }
     final ftsQuery = tokens.map((t) => '$t*').join(' ');
-    String sql = '''
+
+    // ① FTS 前綴搜尋
+    String ftsSql = '''
       SELECT p.* FROM $tableProducts p
       WHERE p.id IN (
         SELECT rowid FROM $tableFts WHERE $tableFts MATCH ?
       )
     ''';
-    final args = <dynamic>[ftsQuery];
+    final ftsArgs = <dynamic>[ftsQuery];
     if (brandFilter != null && brandFilter.isNotEmpty) {
-      sql += ' AND p.brand = ?';
-      args.add(brandFilter);
+      ftsSql += ' AND p.brand = ?';
+      ftsArgs.add(brandFilter);
     }
-    sql += ' ORDER BY p.brand ASC, p.model ASC LIMIT ? OFFSET ?';
-    args.addAll([limit, offset]);
-    final rows = await db.rawQuery(sql, args);
-    return rows.map(TintProduct.fromMap).toList();
+    final ftsRows = await db.rawQuery(ftsSql, ftsArgs);
+    final seen = <String>{};
+    final products = <TintProduct>[];
+    for (final row in ftsRows) {
+      final p = TintProduct.fromMap(row);
+      if (seen.add(p.certNumber)) products.add(p);
+    }
+
+    // ② LIKE 子字串補全（補捉 FTS 前綴未命中的如 LB7080、TB70）
+    final likePattern = '%${query.trim()}%';
+    String likeSql = '''
+      SELECT * FROM $tableProducts
+      WHERE (brand LIKE ? OR model LIKE ?)
+    ''';
+    final likeArgs = <dynamic>[likePattern, likePattern];
+    if (brandFilter != null && brandFilter.isNotEmpty) {
+      likeSql += ' AND brand = ?';
+      likeArgs.add(brandFilter);
+    }
+    final likeRows = await db.rawQuery(likeSql, likeArgs);
+    for (final row in likeRows) {
+      final p = TintProduct.fromMap(row);
+      if (seen.add(p.certNumber)) products.add(p);
+    }
+
+    // 合併結果排序後套用 limit/offset
+    products.sort((a, b) {
+      final c = a.brand.compareTo(b.brand);
+      return c != 0 ? c : a.model.compareTo(b.model);
+    });
+    return products.skip(offset).take(limit).toList();
   }
 
   Future<List<String>> getAllBrands() async {
@@ -291,6 +320,23 @@ class AppDatabase {
     return {
       for (final r in rows) r['brand'] as String: (r['cnt'] as int),
     };
+  }
+
+  /// 回傳同品牌+型號的所有產品（涵蓋業者自行烙印與專業機構印製等所有記錄）
+  Future<List<TintProduct>> getProductsByBrandModel(
+      String brand, String model) async {
+    if (kIsWeb) {
+      return _webStore
+          .where((p) => p.brand == brand && p.model == model)
+          .toList();
+    }
+    final db = await database;
+    final rows = await db.query(
+      tableProducts,
+      where: 'brand = ? AND model = ?',
+      whereArgs: [brand, model],
+    );
+    return rows.map(TintProduct.fromMap).toList();
   }
 
   Future<TintProduct?> getProductById(int id) async {

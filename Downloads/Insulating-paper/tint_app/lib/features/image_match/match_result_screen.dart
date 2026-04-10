@@ -4,7 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/database/app_database.dart';
 import '../../core/image/similarity_calculator.dart';
+import '../../data/models/tint_product.dart';
 import '../search/search_screen.dart' show ProductDetailScreen;
 import 'image_match_providers.dart';
 import 'widgets/similarity_badge.dart';
@@ -110,6 +112,7 @@ class _MatchResultScreenState extends ConsumerState<MatchResultScreen> {
                       queryBytes: state.queryBytes,
                       rank: i + 1,
                       total: results.length,
+                      isProfessionalLabel: state.isProfessionalLabel,
                     ),
                   ),
                 ),
@@ -238,12 +241,14 @@ class _ResultCard extends StatelessWidget {
   final Uint8List? queryBytes;
   final int rank;
   final int total;
+  final bool isProfessionalLabel;
 
   const _ResultCard({
     required this.result,
     required this.queryBytes,
     required this.rank,
     required this.total,
+    this.isProfessionalLabel = false,
   });
 
   @override
@@ -273,39 +278,66 @@ class _ResultCard extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // ── 圖片比較區 ─────────────────────────────────────────
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  children: [
-                    const Text('拍攝圖片',
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: queryBytes != null
-                          ? Image.memory(queryBytes!,
-                              height: 150, fit: BoxFit.cover,
-                              width: double.infinity)
-                          : _placeholder(150),
-                    ),
-                  ],
-                ),
+          // ── 專業機構印製警告（OCR 辨識到 SA/FA 序號，或比對到的產品為專業機構印製）
+          if (isProfessionalLabel || _isProfessionalLabel(product.standard)) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange, width: 1.2),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  children: [
-                    const Text('資料庫圖片',
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: _ProductImage(product: product, height: 150),
-                    ),
-                  ],
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Colors.orange, size: 18),
+                      SizedBox(width: 6),
+                      Text(
+                        '請注意',
+                        style: TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '您拍攝的照片為「專業機構印製」標貼，\n本功能僅支援「申請者自行烙印」的標貼。\n請改用「序號查詢」功能進行查詢。',
+                    style: TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          // ── 圖片比較區（上下排列）─────────────────────────────
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('拍攝圖片',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: queryBytes != null
+                    ? Image.memory(queryBytes!,
+                        height: 160, fit: BoxFit.cover,
+                        width: double.infinity)
+                    : _placeholder(160),
+              ),
+              const SizedBox(height: 10),
+              const Text('資料庫圖片（申請者自行烙印）',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: _SelfBrandedImage(product: product, height: 160),
               ),
             ],
           ),
@@ -359,6 +391,11 @@ class _ResultCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static bool _isProfessionalLabel(String? standard) {
+    if (standard == null) return false;
+    return standard.contains('專業機構');
   }
 
   Widget _infoRow(String label, String value) => Padding(
@@ -430,17 +467,18 @@ class _SourceBadge extends StatelessWidget {
   }
 }
 
-// ─── 產品圖片 ─────────────────────────────────────────────────────
+// ─── 產品圖片（優先顯示業者自行烙印圖） ──────────────────────────
 
 class _ProductImage extends StatelessWidget {
-  final dynamic product;
+  final TintProduct product;
   final double height;
 
   const _ProductImage({required this.product, required this.height});
 
   @override
   Widget build(BuildContext context) {
-    final localPath = product.firstImageLocalPath as String?;
+    // 優先使用業者自行烙印圖的本機路徑（非「範例」圖）
+    final localPath = product.selfBrandedImageLocalPath;
     if (localPath != null) {
       return FutureBuilder<bool>(
         future: File(localPath).exists(),
@@ -457,7 +495,8 @@ class _ProductImage extends StatelessWidget {
   }
 
   Widget _networkOrPlaceholder() {
-    final url = product.firstImageUrl as String?;
+    // fallback：使用業者自行烙印圖的網路 URL（非「範例」圖）
+    final url = product.selfBrandedImageUrl;
     if (url != null) {
       return CachedNetworkImage(
         imageUrl: url,
@@ -482,6 +521,37 @@ class _ProductImage extends StatelessWidget {
         child: const Icon(Icons.image_not_supported_outlined,
             color: Colors.grey, size: 40),
       );
+}
+
+// ─── 業者自行烙印圖片（優先顯示同品牌型號中 standard 含「業者自行烙印」的產品圖） ──
+
+class _SelfBrandedImage extends StatelessWidget {
+  final TintProduct product;
+  final double height;
+  const _SelfBrandedImage({required this.product, required this.height});
+
+  Future<TintProduct> _loadSelfBrandedProduct() async {
+    final all = await AppDatabase.instance
+        .getProductsByBrandModel(product.brand, product.model);
+    return all.firstWhere(
+      (p) =>
+          p.standard != null &&
+          (p.standard!.contains('業者自行烙印') ||
+              p.standard!.contains('申請者自行烙印')),
+      orElse: () => product,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<TintProduct>(
+      future: _loadSelfBrandedProduct(),
+      builder: (ctx, snap) {
+        final target = snap.data ?? product;
+        return _ProductImage(product: target, height: height);
+      },
+    );
+  }
 }
 
 // ─── 頁碼指示器 ──────────────────────────────────────────────────

@@ -195,8 +195,11 @@ class SyncService {
           final file = File(localPath);
 
           if (!await file.exists()) {
+            // 使用 Uri.encodeFull 處理路徑含中文字的 URL（如 ...範例.jpg）
+            final uri = _safeParseUri(url);
+            if (uri == null) continue;
             final resp = await http
-                .get(Uri.parse(url))
+                .get(uri)
                 .timeout(const Duration(seconds: 15));
             if (resp.statusCode == 200) {
               await file.writeAsBytes(resp.bodyBytes);
@@ -239,6 +242,17 @@ class SyncService {
         ));
       }
     }
+  }
+
+  /// 安全解析 URL，若路徑含未編碼中文字（如 ...範例.jpg）則先 encodeFull 再解析
+  Uri? _safeParseUri(String url) {
+    try {
+      return Uri.parse(url);
+    } catch (_) {}
+    try {
+      return Uri.parse(Uri.encodeFull(url));
+    } catch (_) {}
+    return null;
   }
 
   Future<DateTime?> getLastSyncTime() async {

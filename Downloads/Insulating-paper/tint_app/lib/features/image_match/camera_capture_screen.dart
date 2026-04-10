@@ -41,7 +41,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       );
       final controller = CameraController(
         camera,
-        ResolutionPreset.high,
+        ResolutionPreset.medium, // medium 比 high 拍攝速度更快
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
@@ -179,21 +179,51 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
         // 提示文字
         Positioned(
           bottom: 140,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black45,
-                borderRadius: BorderRadius.circular(20),
+          left: 16,
+          right: 16,
+          child: Column(
+            children: [
+              // 警示提醒
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        color: Colors.white, size: 16),
+                    SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '僅限拍攝申請者自行烙印的標貼',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: const Text(
-                '將隔熱紙標貼對準框內後拍攝',
-                style: TextStyle(color: Colors.white, fontSize: 14),
+              const SizedBox(height: 8),
+              // 對準提示
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  '將隔熱紙標貼對準框內後拍攝',
+                  style: TextStyle(color: Colors.white, fontSize: 14),
+                ),
               ),
-            ),
+            ],
           ),
         ),
 

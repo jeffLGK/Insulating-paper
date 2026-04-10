@@ -136,6 +136,42 @@
   String? get firstImageLocalPath =>
       imageLocalPaths.isEmpty ? null : imageLocalPaths.first;
 
+  /// 根據 URL 的 hash 值找到對應的本機路徑，不依賴 index 順序。
+  /// 下載時以 '${url.hashCode.abs()}.jpg' 命名，因此可逆向比對。
+  String? localPathForUrl(String url) {
+    final expectedFilename = '${url.hashCode.abs()}.jpg';
+    for (final path in imageLocalPaths) {
+      // 取路徑最後一段（檔名），相容 Android / Windows 路徑分隔符
+      final filename = path.replaceAll('\\', '/').split('/').last;
+      if (filename == expectedFilename) return path;
+    }
+    return null;
+  }
+
+  /// 業者自行烙印圖的本機路徑。
+  /// 優先找 imageUrls 中不含「範例」的 URL 所對應的本機檔案；
+  /// 若所有 URL 都含「範例」或均未下載，fallback 到最後一筆本機路徑。
+  String? get selfBrandedImageLocalPath {
+    for (final url in imageUrls) {
+      if (!url.contains('範例')) {
+        final lp = localPathForUrl(url);
+        if (lp != null) return lp;
+      }
+    }
+    // fallback：業者烙印圖通常排在後面
+    final paths = imageLocalPaths;
+    return paths.isNotEmpty ? paths.last : null;
+  }
+
+  /// 業者自行烙印圖的網路 URL（本機無檔案時 fallback 使用）。
+  /// 優先取不含「範例」的 URL。
+  String? get selfBrandedImageUrl {
+    for (final url in imageUrls) {
+      if (!url.contains('範例')) return url;
+    }
+    return firstImageUrl;
+  }
+
   @override
   String toString() => 'TintProduct($brand $model, cert: $certNumber)';
 }

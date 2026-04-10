@@ -25,6 +25,9 @@ class ImageMatchState {
   /// OCR 辨識出的原始文字（僅供顯示除錯用）
   final String? ocrRawText;
 
+  /// OCR 辨識到 SA\d+ 或 FA\d+ 格式（專業機構印製序號）
+  final bool isProfessionalLabel;
+
   const ImageMatchState({
     this.status = MatchStatus.idle,
     this.results = const [],
@@ -32,6 +35,7 @@ class ImageMatchState {
     this.errorMessage,
     this.progressMessage = '',
     this.ocrRawText,
+    this.isProfessionalLabel = false,
   });
 
   ImageMatchState copyWith({
@@ -41,6 +45,7 @@ class ImageMatchState {
     String? errorMessage,
     String? progressMessage,
     String? ocrRawText,
+    bool? isProfessionalLabel,
   }) =>
       ImageMatchState(
         status: status ?? this.status,
@@ -49,6 +54,7 @@ class ImageMatchState {
         errorMessage: errorMessage ?? this.errorMessage,
         progressMessage: progressMessage ?? this.progressMessage,
         ocrRawText: ocrRawText ?? this.ocrRawText,
+        isProfessionalLabel: isProfessionalLabel ?? this.isProfessionalLabel,
       );
 }
 
@@ -71,6 +77,8 @@ class ImageMatchNotifier extends StateNotifier<ImageMatchState> {
       final ocrText = await OcrService.extractText(imageBytes);
       final parsed = LabelTextParser.parse(ocrText);
 
+      final isProfessional = parsed.isProfessionalSerialFormat;
+
       if (parsed.hasContent) {
         _emitProgress('比對資料庫中（OCR）…');
         final ocrResults = await _matchByOcr(parsed, ocrText);
@@ -79,6 +87,7 @@ class ImageMatchNotifier extends StateNotifier<ImageMatchState> {
             status: MatchStatus.done,
             results: ocrResults,
             ocrRawText: ocrText,
+            isProfessionalLabel: isProfessional,
           );
           return;
         }
@@ -110,12 +119,14 @@ class ImageMatchNotifier extends StateNotifier<ImageMatchState> {
           errorMessage: 'OCR 及圖像比對均未找到符合結果\n'
               '（OCR 擷取文字：${ocrText.isEmpty ? "無" : ocrText.trim()}）',
           ocrRawText: ocrText.isEmpty ? null : ocrText,
+          isProfessionalLabel: isProfessional,
         );
       } else {
         state = state.copyWith(
           status: MatchStatus.done,
           results: imgResults,
           ocrRawText: ocrText.isEmpty ? null : ocrText,
+          isProfessionalLabel: isProfessional,
         );
       }
     } catch (e) {
@@ -162,7 +173,7 @@ class ImageMatchNotifier extends StateNotifier<ImageMatchState> {
         }
       }
 
-      if (score > 0) scored.add((product: product, score: score));
+      if (score >= 0.30) scored.add((product: product, score: score));
     }
 
     if (scored.isEmpty) return [];

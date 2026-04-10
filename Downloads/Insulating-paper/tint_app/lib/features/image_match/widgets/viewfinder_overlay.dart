@@ -17,7 +17,7 @@ class _ViewfinderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final frameW = size.width * 0.82;
-    final frameH = frameW * (2 / 3);
+    final frameH = frameW * (1 / 2); // 2:1 寬高比
     final frameLeft = (size.width - frameW) / 2;
     final frameTop = (size.height - frameH) / 2 - size.height * 0.05;
     final frameRect = Rect.fromLTWH(frameLeft, frameTop, frameW, frameH);

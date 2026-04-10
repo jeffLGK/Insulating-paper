@@ -73,24 +73,15 @@ class ImageMatchScreen extends ConsumerWidget {
           toolbarColor: Colors.black,
           toolbarWidgetColor: Colors.white,
           activeControlsWidgetColor: Colors.greenAccent,
-          initAspectRatio: CropAspectRatioPreset.ratio3x2,
           lockAspectRatio: false,
           showCropGrid: true,
-          aspectRatioPresets: [
-            CropAspectRatioPreset.ratio3x2,
-            CropAspectRatioPreset.original,
-            CropAspectRatioPreset.square,
-          ],
+          aspectRatioPresets: [],   // 空陣列：不顯示比例按鈕，可自由裁切任意尺寸
         ),
         IOSUiSettings(
           title: '裁切隔熱紙區域',
           doneButtonTitle: '確認',
           cancelButtonTitle: '取消',
-          aspectRatioPresets: [
-            CropAspectRatioPreset.ratio3x2,
-            CropAspectRatioPreset.original,
-            CropAspectRatioPreset.square,
-          ],
+          aspectRatioPresets: [],   // 空陣列：可自由裁切任意尺寸
         ),
       ],
     );

@@ -17,6 +17,7 @@ import '../comparison/comparison_providers.dart';
 import '../comparison/comparison_screen.dart';
 import 'advanced_filters_providers.dart';
 import 'advanced_filters_sheet.dart';
+import '../../core/database/app_database.dart';
 import '../../data/models/tint_product.dart';
 import '../../data/datasources/car_safety_scraper.dart';
 
@@ -856,23 +857,32 @@ class ProductDetailScreen extends ConsumerWidget {
   final int productId;
   const ProductDetailScreen({super.key, required this.productId});
 
+  Future<({TintProduct? product, List<TintProduct> variants})> _loadData(
+      dynamic repo) async {
+    final product = await repo.getById(productId) as TintProduct?;
+    if (product == null) return (product: null, variants: <TintProduct>[]);
+    final variants = await AppDatabase.instance
+        .getProductsByBrandModel(product.brand, product.model);
+    return (product: product, variants: variants);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.read(tintRepositoryProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('產品詳細資料')),
-      body: FutureBuilder<TintProduct?>(
-        future: repo.getById(productId),
+      body: FutureBuilder<({TintProduct? product, List<TintProduct> variants})>(
+        future: _loadData(repo),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-          final product = snap.data;
-          if (product == null) {
+          final data = snap.data;
+          if (data == null || data.product == null) {
             return const Center(child: Text('找不到該產品'));
           }
-          return _DetailBody(product: product);
+          return _DetailBody(product: data.product!, variants: data.variants);
         },
       ),
     );
@@ -881,47 +891,94 @@ class ProductDetailScreen extends ConsumerWidget {
 
 class _DetailBody extends StatelessWidget {
   final TintProduct product;
-  const _DetailBody({required this.product});
+  final List<TintProduct> variants;
+  const _DetailBody({required this.product, this.variants = const []});
+
+  /// 從所有 variants 收集圖片，每筆附上 LabelMethod 標籤。
+  ///
+  /// 以 imageUrls 為基準逐張決定來源：
+  ///   - 用 localPathForUrl(url) 根據 URL hash 找到對應本機路徑（不依賴 index）
+  ///   - 本機檔案存在 → 顯示本機；否則 → fallback 網路 URL
+  ///
+  /// 若 imageUrls 為空但有本機路徑（舊版資料），直接顯示全部本機路徑。
+  List<({String label, String path, bool isLocal})> _allImages() {
+    final result = <({String label, String path, bool isLocal})>[];
+    final all = variants.isNotEmpty ? variants : [product];
+
+    for (final v in all) {
+      final label = v.standard ?? '';
+      final networkUrls = v.imageUrls;
+
+      if (networkUrls.isEmpty) {
+        // 舊版資料：無 imageUrls，只有本機路徑
+        if (!kIsWeb) {
+          for (final lp in v.imageLocalPaths) {
+            result.add((label: label, path: lp, isLocal: true));
+          }
+        }
+        continue;
+      }
+
+      for (final url in networkUrls) {
+        if (!kIsWeb) {
+          final lp = v.localPathForUrl(url);
+          if (lp != null && File(lp).existsSync()) {
+            result.add((label: label, path: lp, isLocal: true));
+            continue;
+          }
+        }
+        // 本機無檔案 → 使用網路 URL
+        result.add((label: label, path: url, isLocal: false));
+      }
+    }
+    return result;
+  }
 
   @override
   Widget build(BuildContext context) {
-    // 決定顯示圖片的來源：本機路徑優先，沒有再用網路 URL
-    final localPaths = product.imageLocalPaths;
-    final networkUrls = product.imageUrls;
-    final hasLocalImages = !kIsWeb && localPaths.isNotEmpty;
+    final images = _allImages();
 
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // 合格標識圖片（優先使用本機已下載圖片）
-        if (hasLocalImages || networkUrls.isNotEmpty)
+        // 合格標識圖片（本機優先；未下載者 fallback 網路 URL）
+        if (images.isNotEmpty)
           Wrap(
             spacing: 12,
             runSpacing: 12,
             alignment: WrapAlignment.center,
-            children: hasLocalImages
-                ? localPaths.map((path) => ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.file(
-                        File(path),
-                        height: 180,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    )).toList()
-                : networkUrls.map((url) => ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: url,
-                        height: 180,
-                        fit: BoxFit.contain,
-                        placeholder: (_, __) => const SizedBox(
-                          width: 120, height: 180,
-                          child: Center(child: CircularProgressIndicator()),
+            children: images.map((img) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: img.isLocal
+                      ? Image.file(File(img.path),
+                          height: 180, fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) =>
+                              const SizedBox.shrink())
+                      : CachedNetworkImage(
+                          imageUrl: img.path,
+                          height: 180,
+                          fit: BoxFit.contain,
+                          placeholder: (_, __) => const SizedBox(
+                            width: 120,
+                            height: 180,
+                            child: Center(
+                                child: CircularProgressIndicator()),
+                          ),
+                          errorWidget: (_, __, ___) =>
+                              const SizedBox.shrink(),
                         ),
-                        errorWidget: (_, __, ___) => const SizedBox.shrink(),
-                      ),
-                    )).toList(),
+                ),
+                if (img.label.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(img.label,
+                      style: const TextStyle(
+                          fontSize: 11, color: Colors.grey)),
+                ],
+              ],
+            )).toList(),
           ),
         const SizedBox(height: 20),
 
