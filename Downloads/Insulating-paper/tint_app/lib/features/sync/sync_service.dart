@@ -185,7 +185,8 @@ class SyncService {
     int done = 0;
 
     for (final product in withImages) {
-      final urls = product.imageUrls;
+      // 只下載業者自行烙印圖（過濾含「範例」的 URL）
+      final urls = product.imageUrls.where((u) => !u.contains('範例')).toList();
       final localPaths = <String>[];
 
       for (final url in urls) {

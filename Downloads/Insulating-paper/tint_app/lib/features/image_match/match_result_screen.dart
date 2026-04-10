@@ -517,9 +517,31 @@ class _ProductImage extends StatelessWidget {
 
   Widget _empty() => Container(
         height: height,
-        color: Colors.grey.shade200,
-        child: const Icon(Icons.image_not_supported_outlined,
-            color: Colors.grey, size: 40),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.07),
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.info_outline, color: Colors.orange, size: 28),
+            SizedBox(height: 8),
+            Text(
+              '無業者自行烙印的實際認證貼紙',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.orange),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 4),
+            Text(
+              '請改用「序號查詢」功能',
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+        ),
       );
 }
 

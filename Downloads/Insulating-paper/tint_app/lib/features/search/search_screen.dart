@@ -920,6 +920,8 @@ class _DetailBody extends StatelessWidget {
       }
 
       for (final url in networkUrls) {
+        // 過濾範例圖，只顯示業者自行烙印圖
+        if (url.contains('範例')) continue;
         if (!kIsWeb) {
           final lp = v.localPathForUrl(url);
           if (lp != null && File(lp).existsSync()) {
@@ -941,7 +943,7 @@ class _DetailBody extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // 合格標識圖片（本機優先；未下載者 fallback 網路 URL）
+        // 合格標識圖片（本機優先；未下載者 fallback 網路 URL；無烙印圖顯示提示）
         if (images.isNotEmpty)
           Wrap(
             spacing: 12,
@@ -979,6 +981,37 @@ class _DetailBody extends StatelessWidget {
                 ],
               ],
             )).toList(),
+          )
+        else
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: Colors.orange.withValues(alpha: 0.4), width: 1),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.info_outline, color: Colors.orange, size: 28),
+                SizedBox(height: 8),
+                Text(
+                  '無業者自行烙印的實際認證貼紙',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.orange),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 4),
+                Text(
+                  '本產品僅有專業機構印製的範例圖\n建議改用「序號查詢」功能查看詳細資訊',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         const SizedBox(height: 20),
 
