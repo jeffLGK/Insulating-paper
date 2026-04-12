@@ -11,7 +11,7 @@ export '../../core/image/similarity_calculator.dart' show MatchResult, MatchSour
 
 // ── 狀態定義 ────────────────────────────────────────────────────
 
-enum MatchStatus { idle, loading, done, noMatch, error }
+enum MatchStatus { idle, loading, done, noMatch, error, professionalLabel }
 
 class ImageMatchState {
   final MatchStatus status;
@@ -77,8 +77,17 @@ class ImageMatchNotifier extends StateNotifier<ImageMatchState> {
       final ocrText = await OcrService.extractText(imageBytes);
       final parsed = LabelTextParser.parse(ocrText);
 
-      final isProfessional = parsed.isProfessionalSerialFormat;
+      // ── 專業機構印製序號（SA* / FA*）→ 直接中止，不執行任何比對 ──
+      if (parsed.isProfessionalSerialFormat) {
+        state = state.copyWith(
+          status: MatchStatus.professionalLabel,
+          isProfessionalLabel: true,
+          ocrRawText: ocrText.isEmpty ? null : ocrText,
+        );
+        return;
+      }
 
+      // ── OCR 比對資料庫 ───────────────────────────────────────────
       if (parsed.hasContent) {
         _emitProgress('比對資料庫中（OCR）…');
         final ocrResults = await _matchByOcr(parsed, ocrText);
@@ -87,48 +96,19 @@ class ImageMatchNotifier extends StateNotifier<ImageMatchState> {
             status: MatchStatus.done,
             results: ocrResults,
             ocrRawText: ocrText,
-            isProfessionalLabel: isProfessional,
+            isProfessionalLabel: false,
           );
           return;
         }
       }
 
-      // ══════════════════════════════════════════════════════════
-      // Phase 2：圖像相似度備援（OCR 無結果時）
-      // ══════════════════════════════════════════════════════════
-      _emitProgress('OCR 無結果，改用圖像比對…');
-      final products = await AppDatabase.instance.getProductsForMatching();
-
-      if (products.isEmpty) {
-        state = state.copyWith(
-          status: MatchStatus.noMatch,
-          errorMessage: '資料庫中尚無圖片資料，請先執行同步',
-          ocrRawText: ocrText.isEmpty ? null : ocrText,
-        );
-        return;
-      }
-
-      final imgResults = await SimilarityCalculator.findMatches(
-        queryBytes: imageBytes,
-        products: products,
+      // ── 無符合結果 ───────────────────────────────────────────────
+      state = state.copyWith(
+        status: MatchStatus.noMatch,
+        errorMessage: '無符合資料',
+        ocrRawText: ocrText.isEmpty ? null : ocrText,
+        isProfessionalLabel: false,
       );
-
-      if (imgResults.isEmpty) {
-        state = state.copyWith(
-          status: MatchStatus.noMatch,
-          errorMessage: 'OCR 及圖像比對均未找到符合結果\n'
-              '（OCR 擷取文字：${ocrText.isEmpty ? "無" : ocrText.trim()}）',
-          ocrRawText: ocrText.isEmpty ? null : ocrText,
-          isProfessionalLabel: isProfessional,
-        );
-      } else {
-        state = state.copyWith(
-          status: MatchStatus.done,
-          results: imgResults,
-          ocrRawText: ocrText.isEmpty ? null : ocrText,
-          isProfessionalLabel: isProfessional,
-        );
-      }
     } catch (e) {
       state = state.copyWith(
         status: MatchStatus.error,
@@ -143,44 +123,46 @@ class ImageMatchNotifier extends StateNotifier<ImageMatchState> {
       ParsedLabel parsed, String ocrText) async {
     final db = AppDatabase.instance;
 
-    // 以每個 token 搜尋資料庫，蒐集候選產品
-    final seen = <String>{};
-    final candidates = <TintProduct>[];
+    // ── 候選搜尋策略 ─────────────────────────────────────────────
+    //
+    // 優先：取含有 `-` 的 token（保留連字符做整段比對）
+    //       例："V-KOOL UXM70" → 先用 ['V-KOOL'] 搜尋
+    // 退回：將 `-` 也當分隔符，拆成更細的 tokens 搜尋
+    //       例：['V', 'KOOL', 'UXM70']
 
-    for (final token in parsed.tokens) {
-      try {
-        final found = await db.searchProducts(token, limit: 50);
-        for (final p in found) {
-          if (seen.add(p.certNumber)) candidates.add(p);
-        }
-      } catch (_) {}
+    final hyphenTokens = LabelTextParser.likeTokensWithHyphens(ocrText)
+        .where((t) => t.contains('-'))
+        .toList();
+
+    List<TintProduct> candidates = [];
+
+    if (hyphenTokens.isNotEmpty) {
+      candidates = await db.searchByLikeTokens(hyphenTokens);
+    }
+
+    // 無含 `-` 的 token，或含 `-` 的搜尋無結果 → 退回一般分割搜尋
+    if (candidates.isEmpty) {
+      final tokens = LabelTextParser.likeTokens(ocrText);
+      if (tokens.isEmpty) return [];
+      candidates = await db.searchByLikeTokens(tokens);
     }
 
     if (candidates.isEmpty) return [];
 
-    // 計算每個候選產品的 OCR 匹配分數
+    // ── 評分（加權比對，由右往左：60% / 30% / 10%） ────────────
     final scored = <({TintProduct product, double score})>[];
     for (final product in candidates) {
-      double score = parsed.scoreProduct(product.brand, product.model);
-
-      // VLT 吻合加分 +0.1
-      if (parsed.vlt != null && product.visibleLight != null) {
-        final ocrVlt = double.tryParse(parsed.vlt!);
-        final dbVlt = double.tryParse(
-            product.visibleLight!.replaceAll(RegExp(r'[^0-9.]'), ''));
-        if (ocrVlt != null && dbVlt != null && (ocrVlt - dbVlt).abs() <= 2) {
-          score = (score + 0.1).clamp(0.0, 1.0);
-        }
-      }
-
-      if (score >= 0.30) scored.add((product: product, score: score));
+      final score = parsed.scoreProduct(product.brand, product.model);
+      // 門檻：≥ 50%
+      if (score >= 0.50) scored.add((product: product, score: score));
     }
 
     if (scored.isEmpty) return [];
 
     scored.sort((a, b) => b.score.compareTo(a.score));
 
-    return scored.take(5).map((s) => MatchResult(
+    // 最多回傳 3 筆
+    return scored.take(3).map((s) => MatchResult(
           product: s.product,
           similarity: s.score,
           source: MatchSource.ocr,
