@@ -1,11 +1,44 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img_lib;
 
 import 'widgets/viewfinder_overlay.dart';
 
-/// 帶取景框的相機畫面。
-/// 拍照後將圖片 bytes pop 回呼叫方。
+// ── 頂層 isolate 裁切函式 ──────────────────────────────────────────
+// compute() 需要頂層函式，無法使用 instance method。
+
+Uint8List _doCrop(List<dynamic> args) {
+  final bytes = args[0] as Uint8List;
+  final frameLeft = args[1] as double;
+  final frameTop = args[2] as double;
+  final frameW = args[3] as double;
+  final frameH = args[4] as double;
+  final screenW = args[5] as double;
+  final screenH = args[6] as double;
+
+  final decoded = img_lib.decodeImage(bytes);
+  if (decoded == null) return bytes;
+
+  final scaleX = decoded.width / screenW;
+  final scaleY = decoded.height / screenH;
+
+  final x = (frameLeft * scaleX).round().clamp(0, decoded.width - 1);
+  final y = (frameTop * scaleY).round().clamp(0, decoded.height - 1);
+  final w = (frameW * scaleX).round().clamp(1, decoded.width - x);
+  final h = (frameH * scaleY).round().clamp(1, decoded.height - y);
+
+  final cropped = img_lib.copyCrop(decoded, x: x, y: y, width: w, height: h);
+  return Uint8List.fromList(img_lib.encodeJpg(cropped, quality: 90));
+}
+
+// ── 相機畫面 ──────────────────────────────────────────────────────
+
+/// 帶可調整取景框的相機畫面。
+/// 使用者可任意縮放取景框，拍照後自動裁切至框內範圍，
+/// 將裁切後的 Uint8List 回傳給呼叫方（不需要再次裁切）。
 class CameraCaptureScreen extends StatefulWidget {
   const CameraCaptureScreen({super.key});
 
@@ -20,6 +53,9 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   bool _isCapturing = false;
   FlashMode _flashMode = FlashMode.off;
   String? _errorMsg;
+
+  /// 取景框目前座標（螢幕 dp），由 ResizableViewfinderOverlay 更新。
+  final _frameNotifier = ValueNotifier<Rect?>(null);
 
   @override
   void initState() {
@@ -41,7 +77,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       );
       final controller = CameraController(
         camera,
-        ResolutionPreset.medium, // medium 比 high 拍攝速度更快
+        ResolutionPreset.medium,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
@@ -72,8 +108,27 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     setState(() => _isCapturing = true);
     try {
       final xFile = await _controller!.takePicture();
-      final bytes = await File(xFile.path).readAsBytes();
-      if (mounted) Navigator.of(context).pop(bytes);
+      final fullBytes = await File(xFile.path).readAsBytes();
+
+      // 依取景框範圍自動裁切（在背景 isolate 執行，不阻塞 UI）
+      final frame = _frameNotifier.value;
+      Uint8List resultBytes;
+      if (frame != null) {
+        final screenSize = MediaQuery.of(context).size;
+        resultBytes = await compute(_doCrop, [
+          fullBytes,
+          frame.left,
+          frame.top,
+          frame.width,
+          frame.height,
+          screenSize.width,
+          screenSize.height,
+        ]);
+      } else {
+        resultBytes = fullBytes;
+      }
+
+      if (mounted) Navigator.of(context).pop<Uint8List>(resultBytes);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -96,6 +151,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _frameNotifier.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -133,7 +189,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
             const SizedBox(height: 16),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('返回', style: TextStyle(color: Colors.white)),
+              child:
+                  const Text('返回', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -146,8 +203,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
         // 相機預覽
         CameraPreview(_controller!),
 
-        // 取景框 overlay
-        const ViewfinderOverlay(),
+        // 可調整大小的取景框 overlay（使用者可任意縮放）
+        ResizableViewfinderOverlay(frameNotifier: _frameNotifier),
 
         // 頂部控制列
         Positioned(
@@ -156,7 +213,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
           right: 0,
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -183,10 +241,9 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
           right: 16,
           child: Column(
             children: [
-              // 警示提醒
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 7),
                 decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.85),
                   borderRadius: BorderRadius.circular(10),
@@ -210,16 +267,15 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              // 對準提示
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.black45,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
-                  '將隔熱紙標貼對準框內後拍攝',
+                  '拖曳角落調整框大小，對準標貼後拍攝',
                   style: TextStyle(color: Colors.white, fontSize: 14),
                 ),
               ),
@@ -277,7 +333,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       child: Container(
         width: 44,
         height: 44,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: Colors.black45,
           shape: BoxShape.circle,
         ),

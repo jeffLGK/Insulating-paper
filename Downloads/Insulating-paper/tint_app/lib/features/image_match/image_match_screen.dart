@@ -1,11 +1,9 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'camera_capture_screen.dart';
@@ -13,32 +11,40 @@ import 'image_match_providers.dart';
 import 'match_result_screen.dart';
 
 /// 圖像比對功能的入口畫面
-class ImageMatchScreen extends ConsumerWidget {
+class ImageMatchScreen extends ConsumerStatefulWidget {
   const ImageMatchScreen({super.key});
+
+  @override
+  ConsumerState<ImageMatchScreen> createState() => _ImageMatchScreenState();
+}
+
+class _ImageMatchScreenState extends ConsumerState<ImageMatchScreen> {
+  /// 防止重複觸發（double-tap / 上傳回呼重複觸發）
+  bool _processing = false;
 
   // ── 權限 ──────────────────────────────────────────────────────
 
-  Future<bool> _requestCameraPermission(BuildContext context) async {
+  Future<bool> _requestCameraPermission() async {
     if (kIsWeb) return true;
     final status = await Permission.camera.request();
-    if (status.isPermanentlyDenied && context.mounted) {
-      _showPermissionDialog(context, '相機');
+    if (status.isPermanentlyDenied && mounted) {
+      _showPermissionDialog('相機');
       return false;
     }
     return status.isGranted;
   }
 
-  Future<bool> _requestPhotosPermission(BuildContext context) async {
+  Future<bool> _requestPhotosPermission() async {
     if (kIsWeb) return true;
     final status = await Permission.photos.request();
-    if (status.isPermanentlyDenied && context.mounted) {
-      _showPermissionDialog(context, '照片');
+    if (status.isPermanentlyDenied && mounted) {
+      _showPermissionDialog('照片');
       return false;
     }
     return status.isGranted || status.isLimited;
   }
 
-  void _showPermissionDialog(BuildContext context, String permType) {
+  void _showPermissionDialog(String permType) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -61,10 +67,9 @@ class ImageMatchScreen extends ConsumerWidget {
     );
   }
 
-  // ── 裁切 ──────────────────────────────────────────────────────
+  // ── 裁切（僅供上傳圖片使用） ──────────────────────────────────
 
-  Future<Uint8List?> _cropImage(
-      String sourcePath, BuildContext context) async {
+  Future<Uint8List?> _cropImage(String sourcePath) async {
     final cropped = await ImageCropper().cropImage(
       sourcePath: sourcePath,
       uiSettings: [
@@ -75,13 +80,13 @@ class ImageMatchScreen extends ConsumerWidget {
           activeControlsWidgetColor: Colors.greenAccent,
           lockAspectRatio: false,
           showCropGrid: true,
-          aspectRatioPresets: [],   // 空陣列：不顯示比例按鈕，可自由裁切任意尺寸
+          aspectRatioPresets: [], // 空陣列：可自由裁切任意尺寸
         ),
         IOSUiSettings(
           title: '裁切隔熱紙區域',
           doneButtonTitle: '確認',
           cancelButtonTitle: '取消',
-          aspectRatioPresets: [],   // 空陣列：可自由裁切任意尺寸
+          aspectRatioPresets: [], // 空陣列：可自由裁切任意尺寸
         ),
       ],
     );
@@ -90,68 +95,72 @@ class ImageMatchScreen extends ConsumerWidget {
   }
 
   // ── 相機拍照流程 ───────────────────────────────────────────────
+  // 使用者在相機畫面內縮放取景框並拍照，相機畫面已自動裁切，
+  // 回傳裁切好的 Uint8List，無需再次裁切，直接送比對。
 
-  Future<void> _startCamera(BuildContext context, WidgetRef ref) async {
-    if (kIsWeb) {
-      _showWebNotSupported(context);
-      return;
+  Future<void> _startCamera() async {
+    if (_processing) return;
+    setState(() => _processing = true);
+    try {
+      if (kIsWeb) {
+        _showWebNotSupported();
+        return;
+      }
+      final granted = await _requestCameraPermission();
+      if (!granted || !mounted) return;
+
+      // CameraCaptureScreen 已依取景框自動裁切，直接回傳 Uint8List
+      final bytes = await Navigator.of(context).push<Uint8List>(
+        MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
+      );
+      if (bytes == null || !mounted) return;
+
+      await _doMatch(bytes);
+    } finally {
+      if (mounted) setState(() => _processing = false);
     }
-    final granted = await _requestCameraPermission(context);
-    if (!granted || !context.mounted) return;
-
-    // 開啟帶取景框的相機畫面，取得圖片 bytes
-    final bytes = await Navigator.of(context).push<Uint8List>(
-      MaterialPageRoute(builder: (_) => const CameraCaptureScreen()),
-    );
-    if (bytes == null || !context.mounted) return;
-
-    // 存為暫存檔，供 image_cropper 使用
-    final tmpDir = await getTemporaryDirectory();
-    final tmpPath =
-        '${tmpDir.path}/tint_query_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    await File(tmpPath).writeAsBytes(bytes);
-
-    if (!context.mounted) return;
-    final croppedBytes = await _cropImage(tmpPath, context);
-    if (croppedBytes == null || !context.mounted) return;
-
-    await _doMatch(context, ref, croppedBytes);
   }
 
   // ── 上傳圖片流程 ───────────────────────────────────────────────
+  // 從相簿選取後，讓使用者手動裁切標貼區域。
 
-  Future<void> _startUpload(BuildContext context, WidgetRef ref) async {
-    if (kIsWeb) {
-      _showWebNotSupported(context);
-      return;
+  Future<void> _startUpload() async {
+    if (_processing) return; // 防止重複觸發
+    setState(() => _processing = true);
+    try {
+      if (kIsWeb) {
+        _showWebNotSupported();
+        return;
+      }
+      final granted = await _requestPhotosPermission();
+      if (!granted || !mounted) return;
+
+      final picker = ImagePicker();
+      final xFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 95,
+      );
+      if (xFile == null || !mounted) return;
+
+      final croppedBytes = await _cropImage(xFile.path);
+      if (croppedBytes == null || !mounted) return;
+
+      await _doMatch(croppedBytes);
+    } finally {
+      if (mounted) setState(() => _processing = false);
     }
-    final granted = await _requestPhotosPermission(context);
-    if (!granted || !context.mounted) return;
-
-    final picker = ImagePicker();
-    final xFile = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 95,
-    );
-    if (xFile == null || !context.mounted) return;
-
-    final croppedBytes = await _cropImage(xFile.path, context);
-    if (croppedBytes == null || !context.mounted) return;
-
-    await _doMatch(context, ref, croppedBytes);
   }
 
   // ── 執行比對並導向結果畫面 ───────────────────────────────────
 
-  Future<void> _doMatch(
-      BuildContext context, WidgetRef ref, Uint8List bytes) async {
+  Future<void> _doMatch(Uint8List bytes) async {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const MatchResultScreen()),
     );
     await ref.read(imageMatchProvider.notifier).startMatch(bytes);
   }
 
-  void _showWebNotSupported(BuildContext context) {
+  void _showWebNotSupported() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('此功能僅支援手機平台')),
     );
@@ -160,9 +169,10 @@ class ImageMatchScreen extends ConsumerWidget {
   // ── Build ──────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final state = ref.watch(imageMatchProvider);
     final isLoading = state.status == MatchStatus.loading;
+    final disabled = isLoading || _processing;
 
     return Scaffold(
       appBar: AppBar(
@@ -195,9 +205,9 @@ class ImageMatchScreen extends ConsumerWidget {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      '1. 以相機對準玻璃上的隔熱紙標貼拍照，或上傳現有圖片。\n'
-                      '2. 裁切框選目標標貼區域。\n'
-                      '3. 系統自動與認證資料庫比對，顯示相似度前5名。\n'
+                      '1. 拖曳取景框角落調整大小，對準隔熱紙標貼後拍照。\n'
+                      '2. 或從相簿上傳圖片並裁切標貼區域。\n'
+                      '3. 系統自動 OCR 辨識文字並與認證資料庫比對，顯示前5名。\n'
                       '4. 逐一檢視後，按「符合」查看完整資料。',
                       style: TextStyle(fontSize: 13, height: 1.6),
                     ),
@@ -212,9 +222,9 @@ class ImageMatchScreen extends ConsumerWidget {
             _BigButton(
               icon: Icons.camera_alt_rounded,
               label: '相機拍照',
-              sublabel: '開啟相機，對準框內拍攝',
+              sublabel: '拖曳框線調整大小，對準標貼後拍攝',
               color: Colors.blue,
-              onTap: isLoading ? null : () => _startCamera(context, ref),
+              onTap: disabled ? null : _startCamera,
             ),
 
             const SizedBox(height: 16),
@@ -225,7 +235,7 @@ class ImageMatchScreen extends ConsumerWidget {
               label: '上傳圖片',
               sublabel: '從相簿或檔案選取',
               color: Colors.teal,
-              onTap: isLoading ? null : () => _startUpload(context, ref),
+              onTap: disabled ? null : _startUpload,
             ),
 
             if (isLoading) ...[

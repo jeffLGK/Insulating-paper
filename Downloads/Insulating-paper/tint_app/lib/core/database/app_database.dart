@@ -394,6 +394,48 @@ class AppDatabase {
     return rows.map(TintProduct.fromMap).toList();
   }
 
+  /// 以 LIKE tokens 搜尋品牌＋型號。
+  /// AND 策略優先（所有 token 都需符合），無結果時退回 OR 策略。
+  ///
+  /// tokens：OCR 文字以空白/「-」分割後的列表，例：['V', 'KOOL', 'UXM70']
+  Future<List<TintProduct>> searchByLikeTokens(List<String> tokens) async {
+    if (tokens.isEmpty) return [];
+
+    if (kIsWeb) {
+      final q = tokens.map((t) => t.toLowerCase()).toList();
+      bool andMatch(TintProduct p) {
+        final c = '${p.brand} ${p.model}'.toLowerCase();
+        return q.every((t) => c.contains(t));
+      }
+      bool orMatch(TintProduct p) {
+        final c = '${p.brand} ${p.model}'.toLowerCase();
+        return q.any((t) => c.contains(t));
+      }
+      final andResult = _webStore.where(andMatch).toList();
+      return andResult.isNotEmpty ? andResult : _webStore.where(orMatch).toList();
+    }
+
+    final db = await database;
+    final args = tokens.map((t) => '%$t%').toList();
+    final clause = (String op) => tokens
+        .map((_) => "(brand || ' ' || model) LIKE ?")
+        .join(' $op ');
+
+    // AND 查詢
+    var rows = await db.rawQuery(
+      'SELECT * FROM $tableProducts WHERE ${clause("AND")} ORDER BY brand ASC, model ASC',
+      args,
+    );
+    if (rows.isNotEmpty) return rows.map(TintProduct.fromMap).toList();
+
+    // OR 退回
+    rows = await db.rawQuery(
+      'SELECT * FROM $tableProducts WHERE ${clause("OR")} ORDER BY brand ASC, model ASC',
+      args,
+    );
+    return rows.map(TintProduct.fromMap).toList();
+  }
+
   Future<void> clearAll() async {
     if (kIsWeb) {
       _webStore.clear();

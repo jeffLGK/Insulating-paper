@@ -73,6 +73,74 @@ class _MatchResultScreenState extends ConsumerState<MatchResultScreen> {
       );
     }
 
+    // ── 專業機構印製（SA*/FA*）→ 只顯示警示，不列結果 ─────────────
+    if (state.status == MatchStatus.professionalLabel) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('比對結果'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () {
+              ref.read(imageMatchProvider.notifier).reset();
+              Navigator.of(context).pop();
+            },
+          ),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              if (state.queryBytes != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.memory(
+                    state.queryBytes!,
+                    width: double.infinity,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange, width: 1.2),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded,
+                            color: Colors.orange, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          '請注意',
+                          style: TextStyle(
+                              color: Colors.orange,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      '您拍攝的照片為「專業機構印製」標貼，\n'
+                      '本功能僅支援「申請者自行烙印」的標貼。\n'
+                      '請改用「序號查詢」功能進行查詢。',
+                      style: TextStyle(fontSize: 13, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final results = state.results;
 
     return Scaffold(
@@ -149,7 +217,7 @@ class _MatchResultScreenState extends ConsumerState<MatchResultScreen> {
               const Icon(Icons.image_search, size: 72, color: Colors.grey),
               const SizedBox(height: 16),
               Text(
-                state.errorMessage ?? '未找到符合的隔熱紙',
+                state.errorMessage ?? '無符合資料',
                 style:
                     const TextStyle(fontSize: 15, color: Colors.grey),
                 textAlign: TextAlign.center,
@@ -316,31 +384,37 @@ class _ResultCard extends StatelessWidget {
             const SizedBox(height: 10),
           ],
 
-          // ── 圖片比較區（上下排列）─────────────────────────────
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('拍攝圖片',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: queryBytes != null
-                    ? Image.memory(queryBytes!,
-                        height: 160, fit: BoxFit.cover,
-                        width: double.infinity)
-                    : _placeholder(160),
-              ),
-              const SizedBox(height: 10),
-              const Text('資料庫圖片（申請者自行烙印）',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: _SelfBrandedImage(product: product, height: 160),
-              ),
-            ],
-          ),
+          // ── 圖片比較區（上下等高排列）────────────────────────────
+          Builder(builder: (ctx) {
+            // 依螢幕高度動態計算圖片高度，縮小為原本的 40%
+            final imgH = (((MediaQuery.of(ctx).size.height - 460) / 2)
+                .clamp(90.0, 180.0)) * 0.4;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('拍攝圖片',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 4),
+                _imageBox(
+                  height: imgH,
+                  child: queryBytes != null
+                      ? Image.memory(queryBytes!,
+                          height: imgH,
+                          width: double.infinity,
+                          fit: BoxFit.contain)
+                      : _placeholder(imgH),
+                ),
+                const SizedBox(height: 10),
+                const Text('資料庫圖片（申請者自行烙印）',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 4),
+                _imageBox(
+                  height: imgH,
+                  child: _SelfBrandedImage(product: product, height: imgH),
+                ),
+              ],
+            );
+          }),
 
           const SizedBox(height: 12),
 
@@ -422,6 +496,18 @@ class _ResultCard extends StatelessWidget {
         child: const Icon(Icons.image_not_supported_outlined,
             color: Colors.grey, size: 40),
       );
+
+  static Widget _imageBox({required double height, required Widget child}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: height,
+        width: double.infinity,
+        color: Colors.grey.shade900,
+        child: child,
+      ),
+    );
+  }
 }
 
 // ─── 來源標籤 ─────────────────────────────────────────────────────
@@ -485,7 +571,7 @@ class _ProductImage extends StatelessWidget {
         builder: (_, snap) {
           if (snap.data == true) {
             return Image.file(File(localPath),
-                height: height, fit: BoxFit.cover, width: double.infinity);
+                height: height, fit: BoxFit.contain, width: double.infinity);
           }
           return _networkOrPlaceholder();
         },
@@ -501,11 +587,11 @@ class _ProductImage extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: url,
         height: height,
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         width: double.infinity,
         placeholder: (_, __) => Container(
           height: height,
-          color: Colors.grey.shade200,
+          color: Colors.grey.shade900,
           child: const Center(
               child: CircularProgressIndicator(strokeWidth: 2)),
         ),
