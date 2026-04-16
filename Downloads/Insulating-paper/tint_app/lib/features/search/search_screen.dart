@@ -234,7 +234,7 @@ class _BrandFilterChips extends ConsumerWidget {
                 label: Text(chipLabel),
                 selected: selected,
                 onSelected: (_) {
-                  ref.read(searchProvider.notifier).setBrandFilter(brand);
+                  ref.read(searchProvider.notifier).setBrandFilter(current == brand ? null : brand);
                 },
               );
             },

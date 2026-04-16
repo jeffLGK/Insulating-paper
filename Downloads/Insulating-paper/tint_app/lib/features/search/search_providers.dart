@@ -170,8 +170,8 @@ class SearchNotifier extends StateNotifier<SearchState> {
         certNumber: p.certNumber,
         visibleLight: p.visibleLight,
         heatRejection: p.heatRejection,
-        imageUrl: p.imageUrl,
-        imageLocalPath: p.firstImageLocalPath,
+        imageUrl: p.selfBrandedImageUrl,
+        imageLocalPath: p.selfBrandedImageLocalPath,
       )).toList();
 
       state = state.copyWith(
