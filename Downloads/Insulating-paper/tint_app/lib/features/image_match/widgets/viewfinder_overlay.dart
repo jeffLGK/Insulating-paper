@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-const double _kHandleSize = 32.0; // 觸控熱區
-const double _kHandleVis = 14.0;  // 可見圓點大小
+const double _kHandleSize = 56.0; // 觸控熱區（放大以提升靈敏度）
+const double _kHandleVis = 18.0;  // 可見圓點大小
 const double _kMinFrame = 80.0;   // 最小框尺寸
 
 /// 可調整大小的取景框。
@@ -25,6 +25,17 @@ class _ResizableViewfinderOverlayState
     final l = (size.width - w) / 2;
     final t = (size.height - h) / 2 - size.height * 0.05;
     return Rect.fromLTWH(l, t, w, h);
+  }
+
+  void _moveFrame(Offset delta, Size size) {
+    if (_frame == null) return;
+    final f = _frame!;
+    final l = (f.left + delta.dx).clamp(0.0, size.width - f.width);
+    final t = (f.top + delta.dy).clamp(0.0, size.height - f.height);
+    setState(() {
+      _frame = Rect.fromLTWH(l, t, f.width, f.height);
+      widget.frameNotifier.value = _frame;
+    });
   }
 
   void _updateFrame(Rect r, Size size) {
@@ -53,6 +64,18 @@ class _ResizableViewfinderOverlayState
         CustomPaint(
           painter: _ViewfinderPainter(frame: f),
           child: const SizedBox.expand(),
+        ),
+
+        // 框內拖移（整體平移）
+        Positioned(
+          left: f.left + _kHandleSize / 2,
+          top: f.top + _kHandleSize / 2,
+          width: (f.width - _kHandleSize).clamp(0.0, double.infinity),
+          height: (f.height - _kHandleSize).clamp(0.0, double.infinity),
+          child: GestureDetector(
+            onPanUpdate: (d) => _moveFrame(d.delta, size),
+            child: Container(color: Colors.transparent),
+          ),
         ),
 
         // 四角拖曳把手
