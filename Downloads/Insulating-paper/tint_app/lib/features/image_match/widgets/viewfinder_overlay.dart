@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 const double _kHandleSize = 56.0; // 觸控熱區（放大以提升靈敏度）
 const double _kHandleVis = 18.0;  // 可見圓點大小
 const double _kMinFrame = 80.0;   // 最小框尺寸
+const double _kCornerSpeed = 2.0; // 角落拖曳速度倍率
 
 /// 可調整大小的取景框。
 /// 四個角落有拖曳把手，拖動後透過 [frameNotifier] 回報目前框的座標（螢幕 dp）。
@@ -110,7 +111,7 @@ class _ResizableViewfinderOverlayState
       width: _kHandleSize,
       height: _kHandleSize,
       child: GestureDetector(
-        onPanUpdate: (d) => onDrag(d.delta),
+        onPanUpdate: (d) => onDrag(d.delta * _kCornerSpeed),
         child: Center(
           child: Container(
             width: _kHandleVis,

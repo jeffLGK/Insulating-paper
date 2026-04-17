@@ -346,8 +346,8 @@ class _ResultCard extends StatelessWidget {
 
           const SizedBox(height: 10),
 
-          // ── 專業機構印製警告（OCR 辨識到 SA/FA 序號，或比對到的產品為專業機構印製）
-          if (isProfessionalLabel || _isProfessionalLabel(product.standard)) ...[
+          // ── 專業機構印製警告（OCR 辨識到 SA/FA 序號）
+          if (isProfessionalLabel) ...[
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(12),
@@ -465,11 +465,6 @@ class _ResultCard extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  static bool _isProfessionalLabel(String? standard) {
-    if (standard == null) return false;
-    return standard.contains('專業機構');
   }
 
   Widget _infoRow(String label, String value) => Padding(
