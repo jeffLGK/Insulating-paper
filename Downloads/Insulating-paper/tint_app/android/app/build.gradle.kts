@@ -45,4 +45,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // ML Kit 中文文字辨識 (google_mlkit_text_recognition 預設僅含 Latin)
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 }
