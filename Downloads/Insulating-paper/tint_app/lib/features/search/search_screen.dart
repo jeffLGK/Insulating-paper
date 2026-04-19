@@ -259,8 +259,9 @@ class _ResultsHeader extends StatelessWidget {
     if (state.query.isEmpty) {
       // 無搜尋時顯示資料庫總筆數，取得前暫顯已載入筆數
       final total = state.totalCount ?? loadedCount;
-      final suffix = state.hasMore ? '（載入中…）' : ' 筆';
-      label = '共 $total$suffix';
+      label = state.hasMore
+          ? '已載入 $loadedCount / $total'
+          : '共 $total 筆';
     } else {
       final suffix = state.hasMore ? '（還有更多）' : ' 筆';
       label = '「${state.query}」找到 $loadedCount$suffix';
