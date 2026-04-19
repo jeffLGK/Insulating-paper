@@ -101,9 +101,9 @@ class LabelTextParser {
     final seenNums = <String>{}; // 去除重複數字
 
     for (final word in kept) {
-      // 保留英數字與連字符，清理其他特殊字元
+      // 保留英數字、連字符與繁體中文字元，清理其他特殊字元
       final clean = word
-          .replaceAll(RegExp(r'[^A-Z0-9\-]'), '')
+          .replaceAll(RegExp(r'[^A-Z0-9\-\u4E00-\u9FFF\u3400-\u4DBF]'), '')
           .replaceAll(RegExp(r'^-+|-+$'), ''); // 修剪頭尾連字符
       if (clean.length < 2) continue;
 
@@ -143,10 +143,10 @@ class ParsedLabel {
   /// 品牌/型號 token 數量
   int get tokenCount => tokens.length;
 
-  /// 去除所有非英數字符號，僅保留英數字，用於寬鬆比對。
-  /// 例："V-KOOL" → "VKOOL"、"3M" → "3M"、"CS-35" → "CS35"
+  /// 去除所有非英數字與非中文字符號，用於寬鬆比對。
+  /// 例："V-KOOL" → "VKOOL"、"3M" → "3M"、"威固" → "威固"
   static String _normalize(String s) =>
-      s.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+      s.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9\u4E00-\u9FFF\u3400-\u4DBF]'), '');
 
   /// 依 token 位置（由右往前）計算比對權重。
   ///

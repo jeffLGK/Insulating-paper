@@ -5,11 +5,17 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:path_provider/path_provider.dart';
 
 /// 使用 Google ML Kit（離線）對圖片進行文字辨識。
+/// 同時執行 Latin 與 Chinese 辨識器，合併結果以支援英文、數字及繁體中文。
 class OcrService {
   OcrService._();
 
-  static final _recognizer =
+  static final _latinRecognizer =
       TextRecognizer(script: TextRecognitionScript.latin);
+  static final _chineseRecognizer =
+      TextRecognizer(script: TextRecognitionScript.chinese);
+
+  // 匹配 CJK 統一漢字（涵蓋繁體中文常用字）
+  static final _cjkPattern = RegExp(r'[\u4E00-\u9FFF\u3400-\u4DBF]');
 
   /// 從圖片 bytes 擷取所有可辨識文字，回傳原始字串。
   /// 若平台不支援或辨識失敗，回傳空字串。
@@ -25,8 +31,26 @@ class OcrService {
       await tmpFile.writeAsBytes(imageBytes);
 
       final inputImage = InputImage.fromFilePath(tmpPath);
-      final result = await _recognizer.processImage(inputImage);
-      return result.text;
+
+      // 兩個辨識器並行執行
+      final results = await Future.wait([
+        _latinRecognizer.processImage(inputImage),
+        _chineseRecognizer.processImage(inputImage),
+      ]);
+
+      final latinText = results[0].text.trim();
+      final chineseText = results[1].text.trim();
+
+      // 從 Chinese 辨識結果中僅提取中文字元（避免重複 Latin 內容）
+      final chineseOnly = chineseText
+          .split('')
+          .where((c) => _cjkPattern.hasMatch(c) || c == ' ' || c == '\n')
+          .join()
+          .trim();
+
+      if (chineseOnly.isEmpty) return latinText;
+      if (latinText.isEmpty) return chineseText;
+      return '$latinText\n$chineseOnly';
     } catch (_) {
       return '';
     } finally {
@@ -34,5 +58,10 @@ class OcrService {
     }
   }
 
-  static Future<void> dispose() => _recognizer.close();
+  static Future<void> dispose() async {
+    await Future.wait([
+      _latinRecognizer.close(),
+      _chineseRecognizer.close(),
+    ]);
+  }
 }
