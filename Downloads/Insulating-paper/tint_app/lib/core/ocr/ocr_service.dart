@@ -30,16 +30,14 @@ class OcrService {
       tmpFile = File(tmpPath);
       await tmpFile.writeAsBytes(imageBytes);
 
-      final inputImage = InputImage.fromFilePath(tmpPath);
+      // 為每個辨識器建立獨立的 InputImage，避免原生層併發存取導致閃退
+      final latinResult =
+          await _latinRecognizer.processImage(InputImage.fromFilePath(tmpPath));
+      final chineseResult = await _chineseRecognizer
+          .processImage(InputImage.fromFilePath(tmpPath));
 
-      // 兩個辨識器並行執行
-      final results = await Future.wait([
-        _latinRecognizer.processImage(inputImage),
-        _chineseRecognizer.processImage(inputImage),
-      ]);
-
-      final latinText = results[0].text.trim();
-      final chineseText = results[1].text.trim();
+      final latinText = latinResult.text.trim();
+      final chineseText = chineseResult.text.trim();
 
       // 從 Chinese 辨識結果中僅提取中文字元（避免重複 Latin 內容）
       final chineseOnly = chineseText

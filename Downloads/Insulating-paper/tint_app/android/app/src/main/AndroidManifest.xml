@@ -8,6 +8,9 @@
         android:label="認證隔熱紙查尋"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr,ocr_chinese" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
