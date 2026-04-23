@@ -67,6 +67,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
+      // 鍵盤升起時不重新 layout body，避免大量卡片每幀 re-layout 造成卡頓
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Text('隔熱紙認證查詢'),
         actions: [
@@ -305,21 +307,15 @@ class _ProductList extends StatelessWidget {
           );
         }
         final item = state.items[i];
-
-        // Simple fade-in animation for list items
-        return AnimatedOpacity(
-          opacity: 1.0,
-          duration: const Duration(milliseconds: 300),
-          child: _ProductCard(
-            id: item.id,
-            brand: item.brand,
-            model: item.model,
-            certNumber: item.certNumber,
-            visibleLight: item.visibleLight,
-            heatRejection: item.heatRejection,
-            imageUrl: item.imageUrl,
-            imageLocalPath: item.imageLocalPath,
-          ),
+        return _ProductCard(
+          id: item.id,
+          brand: item.brand,
+          model: item.model,
+          certNumber: item.certNumber,
+          visibleLight: item.visibleLight,
+          heatRejection: item.heatRejection,
+          imageUrl: item.imageUrl,
+          imageLocalPath: item.imageLocalPath,
         );
       },
     );
@@ -498,6 +494,8 @@ class _Thumbnail extends StatelessWidget {
           width: 56,
           height: 56,
           fit: BoxFit.cover,
+          cacheWidth: 112,
+          cacheHeight: 112,
           errorBuilder: (_, __, ___) => _networkOrPlaceholder(context),
         ),
       );
@@ -515,6 +513,8 @@ class _Thumbnail extends StatelessWidget {
         width: 56,
         height: 56,
         fit: BoxFit.cover,
+        memCacheWidth: 112,
+        memCacheHeight: 112,
         placeholder: (_, __) => _placeholder(context),
         errorWidget: (_, __, ___) => _placeholder(context),
       );

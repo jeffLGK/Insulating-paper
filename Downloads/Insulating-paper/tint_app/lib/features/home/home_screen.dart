@@ -9,6 +9,7 @@ import '../search/search_screen.dart';
 import '../cert_search/cert_search_screen.dart';
 import '../favorites/favorites_screen.dart';
 import '../image_match/image_match_screen.dart';
+import '../../core/app_info.dart';
 import '../../core/database/app_database.dart';
 import '../../data/datasources/car_safety_scraper.dart';
 import '../sync/sync_service.dart';
@@ -198,6 +199,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.info_outline,
+                    size: 18, color: Colors.blueGrey),
+                const SizedBox(width: 8),
+                Text(
+                  'App 版本：v$kAppVersion ($kAppBuildDate)',
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ],
+            ),
           ],
         ),
         actions: [
@@ -220,6 +233,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // 鍵盤升起時 body 與底部導覽列都不重新 layout，
+      // 避免 IndexedStack 內 4 個畫面全部一起被 re-layout 造成卡頓
+      resizeToAvoidBottomInset: false,
       body: IndexedStack(
         index: _currentIndex,
         children: const [
