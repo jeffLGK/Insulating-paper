@@ -1,0 +1,31 @@
+# Node.js (used for one-off pptx/docx generation)
+node_modules/
+node_portable/
+node.zip
+package.json
+package-lock.json
+
+# Generated documents (regenerated from scripts)
+*.docx
+*.pptx
+*.html
+
+# Temp scripts (kept locally, not part of project)
+build_pptx.js
+make_docx.js
+make_pptx.js
+make_feature_graphic.py
+count_images.ps1
+query_api.ps1
+
+# Test images folder
+隔熱紙測試圖/
+
+# Local research drafts (not part of project)
+自行研究計畫概述表.md
+隔熱紙查詢APP簡報_文字稿.md
+
+# IDE / Editor
+.claude/
+.vscode/
+.idea/
