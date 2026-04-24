@@ -1,4 +1,4 @@
-package com.example.tint_app
+package com.jefflgk.tintapp
 
 import io.flutter.embedding.android.FlutterActivity
 

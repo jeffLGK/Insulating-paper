@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
-import 'package:pull_to_refresh/pull_to_refresh.dart';
 
 import 'search_providers.dart';
 import '../sync/sync_service.dart';
@@ -31,20 +30,17 @@ class SearchScreen extends ConsumerStatefulWidget {
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
-  late RefreshController _refreshController;
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
-    _refreshController = RefreshController(initialRefresh: false);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _scrollController.dispose();
-    _refreshController.dispose();
     super.dispose();
   }
 
@@ -57,7 +53,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   Future<void> _onRefresh() async {
     await ref.read(searchProvider.notifier).refresh();
-    _refreshController.refreshCompleted();
   }
 
   @override
@@ -67,7 +62,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      // 鍵盤升起時不重新 layout body，避免大量卡片每幀 re-layout 造成卡頓
+      // 鍵盤彈出時不強制 resize body，避免長清單每 frame 重新 layout 造成卡頓
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: const Text('隔熱紙認證查詢'),
@@ -121,12 +116,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : searchState.items.isEmpty
                     ? _EmptyState(query: searchState.query)
-                    : SmartRefresher(
-                        controller: _refreshController,
+                    : RefreshIndicator(
                         onRefresh: _onRefresh,
-                        header: const WaterDropHeader(
-                          idleIcon: Icon(Icons.cloud_download_outlined),
-                        ),
                         child: _ProductList(
                           state: searchState,
                           scrollController: _scrollController,
@@ -299,6 +290,10 @@ class _ProductList extends StatelessWidget {
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       itemCount: state.items.length + (state.hasMore ? 1 : 0),
+      itemExtent: 104, // 固定卡片高度（含 10px margin），避免捲動時重算 layout
+      addAutomaticKeepAlives: false, // 捲出視窗的 item 立即釋放，減少記憶體累積
+      addRepaintBoundaries: true,
+      cacheExtent: 600, // 預渲染上下 600px，減少邊緣 jank
       itemBuilder: (context, i) {
         if (i == state.items.length) {
           return const Padding(
@@ -307,6 +302,7 @@ class _ProductList extends StatelessWidget {
           );
         }
         final item = state.items[i];
+        // 刻意不使用 key — 讓 Flutter 重用卡片的 RenderObject，大幅提升捲動效能
         return _ProductCard(
           id: item.id,
           brand: item.brand,
@@ -323,7 +319,7 @@ class _ProductList extends StatelessWidget {
 }
 
 // ── 產品卡片 ────────────────────────────────────────────────────────
-class _ProductCard extends ConsumerWidget {
+class _ProductCard extends StatelessWidget {
   final int id;
   final String brand;
   final String model;
@@ -334,6 +330,7 @@ class _ProductCard extends ConsumerWidget {
   final String? imageLocalPath;
 
   const _ProductCard({
+    super.key,
     required this.id,
     required this.brand,
     required this.model,
@@ -345,10 +342,8 @@ class _ProductCard extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final favoriteIds = ref.watch(favoriteIdsProvider);
-    final comparisonIds = ref.watch(comparisonIdsProvider);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -375,23 +370,11 @@ class _ProductCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(
-                            text: brand,
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                    Text(
+                      '$brand  $model',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
                           ),
-                          TextSpan(
-                            text: '  $model',
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ],
-                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -430,40 +413,9 @@ class _ProductCard extends ConsumerWidget {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    // 收藏按鈕
-                    favoriteIds.when(
-                      data: (ids) => IconButton(
-                        icon: Icon(
-                          ids.contains(id) ? Icons.favorite : Icons.favorite_border,
-                          color: ids.contains(id) ? Colors.red : null,
-                          size: 18,
-                        ),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        onPressed: () async {
-                          await ref.read(favoriteIdsProvider.notifier).toggleFavorite(id);
-                        },
-                      ),
-                      loading: () => const SizedBox(width: 20),
-                      error: (_, __) => const SizedBox(width: 20),
-                    ),
+                    _FavoriteButton(id: id),
                     const SizedBox(width: 4),
-                    // 對比按鈕
-                    IconButton(
-                      icon: Icon(
-                        comparisonIds.contains(id) ? Icons.check_box : Icons.check_box_outline_blank,
-                        size: 18,
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () async {
-                        if (comparisonIds.contains(id)) {
-                          ref.read(comparisonProvider.notifier).removeProduct(id);
-                        } else {
-                          await ref.read(comparisonProvider.notifier).addProduct(id);
-                        }
-                      },
-                    ),
+                    _ComparisonButton(id: id),
                     const SizedBox(width: 4),
                     const Icon(Icons.chevron_right, size: 20),
                   ],
@@ -477,6 +429,60 @@ class _ProductCard extends ConsumerWidget {
   }
 }
 
+// 獨立的收藏按鈕 — 只有此 widget 會因收藏狀態變更而重建
+class _FavoriteButton extends ConsumerWidget {
+  final int id;
+  const _FavoriteButton({required this.id});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final favoriteIds = ref.watch(favoriteIdsProvider);
+    return favoriteIds.when(
+      data: (ids) => IconButton(
+        icon: Icon(
+          ids.contains(id) ? Icons.favorite : Icons.favorite_border,
+          color: ids.contains(id) ? Colors.red : null,
+          size: 18,
+        ),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        onPressed: () async {
+          await ref.read(favoriteIdsProvider.notifier).toggleFavorite(id);
+        },
+      ),
+      loading: () => const SizedBox(width: 20),
+      error: (_, __) => const SizedBox(width: 20),
+    );
+  }
+}
+
+// 獨立的對比按鈕 — 只有此 widget 會因對比清單變更而重建
+class _ComparisonButton extends ConsumerWidget {
+  final int id;
+  const _ComparisonButton({required this.id});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final comparisonIds = ref.watch(comparisonIdsProvider);
+    final inList = comparisonIds.contains(id);
+    return IconButton(
+      icon: Icon(
+        inList ? Icons.check_box : Icons.check_box_outline_blank,
+        size: 18,
+      ),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(),
+      onPressed: () async {
+        if (inList) {
+          ref.read(comparisonProvider.notifier).removeProduct(id);
+        } else {
+          await ref.read(comparisonProvider.notifier).addProduct(id);
+        }
+      },
+    );
+  }
+}
+
 class _Thumbnail extends StatelessWidget {
   final String? localPath;
   final String? url;
@@ -485,24 +491,30 @@ class _Thumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 優先使用本機已下載的圖片，避免重複連網
+    // cacheWidth/cacheHeight 強制以縮圖尺寸解碼，避免載入完整解析度造成卷動卡頓
     if (!kIsWeb && localPath != null) {
       final file = File(localPath!);
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.file(
-          file,
-          width: 56,
-          height: 56,
-          fit: BoxFit.cover,
-          cacheWidth: 112,
-          cacheHeight: 112,
-          errorBuilder: (_, __, ___) => _networkOrPlaceholder(context),
+      return RepaintBoundary(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.file(
+            file,
+            width: 56,
+            height: 56,
+            cacheWidth: 168, // 3x for high-DPI displays
+            cacheHeight: 168,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.low,
+            errorBuilder: (_, __, ___) => _networkOrPlaceholder(context),
+          ),
         ),
       );
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: _networkOrPlaceholder(context),
+    return RepaintBoundary(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: _networkOrPlaceholder(context),
+      ),
     );
   }
 
@@ -512,9 +524,10 @@ class _Thumbnail extends StatelessWidget {
         imageUrl: url!,
         width: 56,
         height: 56,
+        memCacheWidth: 168,
+        memCacheHeight: 168,
         fit: BoxFit.cover,
-        memCacheWidth: 112,
-        memCacheHeight: 112,
+        filterQuality: FilterQuality.low,
         placeholder: (_, __) => _placeholder(context),
         errorWidget: (_, __, ___) => _placeholder(context),
       );

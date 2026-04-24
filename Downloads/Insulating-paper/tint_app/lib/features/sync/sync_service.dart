@@ -184,21 +184,24 @@ class SyncService {
     final total = withImages.length;
     int done = 0;
 
-    for (final product in withImages) {
-      // 只下載業者自行烙印圖（過濾含「範例」的 URL）
+    // 單筆產品的下載動作（內部為平行下載多張圖）
+    Future<void> processProduct(TintProduct product) async {
       final urls = product.imageUrls.where((u) => !u.contains('範例')).toList();
-      final localPaths = <String>[];
 
-      for (final url in urls) {
+      // 保留輸入順序的結果陣列
+      final localPaths = List<String?>.filled(urls.length, null);
+
+      await Future.wait(urls.asMap().entries.map((entry) async {
+        final idx = entry.key;
+        final url = entry.value;
         try {
           final filename = '${url.hashCode.abs()}.jpg';
           final localPath = p.join(imagesDir.path, filename);
           final file = File(localPath);
 
           if (!await file.exists()) {
-            // 使用 Uri.encodeFull 處理路徑含中文字的 URL（如 ...範例.jpg）
             final uri = _safeParseUri(url);
-            if (uri == null) continue;
+            if (uri == null) return;
             final resp = await http
                 .get(uri)
                 .timeout(const Duration(seconds: 15));
@@ -208,23 +211,23 @@ class SyncService {
           }
 
           if (await file.exists()) {
-            localPaths.add(localPath);
+            localPaths[idx] = localPath;
           }
         } catch (_) {
           // 單張圖片下載失敗不影響整體流程
         }
-      }
+      }));
 
-      if (localPaths.isNotEmpty) {
+      final savedPaths = localPaths.whereType<String>().toList();
+      if (savedPaths.isNotEmpty) {
         await _db.updateImageLocalPath(
           product.certNumber,
-          localPaths.join(','),
+          savedPaths.join(','),
         );
 
-        // 計算並儲存第一張圖片的 pHash（僅在尚未計算時執行）
         if (product.imagePhash == null || product.imagePhash!.isEmpty) {
           try {
-            final bytes = await File(localPaths.first).readAsBytes();
+            final bytes = await File(savedPaths.first).readAsBytes();
             final phash = ImageHasher.hashFromBytes(bytes);
             if (phash != null) {
               await _db.updateImagePhash(product.certNumber, phash);
@@ -232,8 +235,15 @@ class SyncService {
           } catch (_) {}
         }
       }
+    }
 
-      done++;
+    // 以 6 個產品為一批平行處理，避免同時對伺服器建立過多連線
+    const int concurrency = 6;
+    for (int i = 0; i < withImages.length; i += concurrency) {
+      final batch = withImages.skip(i).take(concurrency).toList();
+      await Future.wait(batch.map(processProduct));
+      done += batch.length;
+
       if (!silent && total > 0) {
         _emit(SyncState(
           status: SyncStatus.syncing,

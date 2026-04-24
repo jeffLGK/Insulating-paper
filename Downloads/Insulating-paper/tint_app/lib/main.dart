@@ -20,6 +20,11 @@ import 'features/sync/sync_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 限制圖片快取，避免長清單連續捲動造成記憶體堆積
+  PaintingBinding.instance.imageCache
+    ..maximumSize = 200        // 最多保留 200 張已解碼圖片（原為 1000）
+    ..maximumSizeBytes = 50 << 20; // 最多 50 MB（原為 100 MB）
+
   // Web 平台使用記憶體存儲，不需要 SQLite 初始化
   if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
     sqfliteFfiInit();
