@@ -68,7 +68,7 @@ class TintApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '隔熱紙查詢',
+      title: '認證隔熱紙查詢',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
