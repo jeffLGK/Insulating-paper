@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/tint_repository.dart';
 import '../../features/sync/sync_service.dart';
+import 'advanced_filters_providers.dart';
 
 // ── Repository provider ─────────────────────────────────────────────
 final tintRepositoryProvider = Provider<TintRepository>((ref) {
@@ -94,12 +95,13 @@ class _ProductItem {
 
 // ── SearchNotifier ──────────────────────────────────────────────────
 class SearchNotifier extends StateNotifier<SearchState> {
-  SearchNotifier(this._repo) : super(const SearchState()) {
+  SearchNotifier(this._repo, this._ref) : super(const SearchState()) {
     // 啟動時載入全部資料
     _load(reset: true);
   }
 
   final TintRepository _repo;
+  final Ref _ref;
   static const int _pageSize = 30;
 
   // 防抖用
@@ -148,11 +150,17 @@ class SearchNotifier extends StateNotifier<SearchState> {
     );
 
     try {
-      final isSearch = state.query.trim().isNotEmpty || state.brandFilter != null;
+      final filters = _ref.read(advancedFiltersProvider);
+      final brandList = filters.selectedBrands.isEmpty ? null : filters.selectedBrands;
+      final hasAdvanced = filters.hasActiveFilters;
+      final isSearch = state.query.trim().isNotEmpty
+          || state.brandFilter != null
+          || hasAdvanced;
       final result = isSearch
           ? await _repo.search(
               query: state.query,
               brandFilter: state.brandFilter,
+              brandList: brandList,
               page: reset ? 0 : state.page,
               pageSize: _pageSize,
             )
@@ -163,7 +171,33 @@ class SearchNotifier extends StateNotifier<SearchState> {
           ? await _repo.getTotalCount()
           : state.totalCount;
 
-      final newItems = result.items.map((p) => _ProductItem(
+      // 進階篩選：可見光與隔熱率範圍以 client-side 過濾（資料以字串儲存）
+      final minVL = double.tryParse(filters.minVisibleLight ?? '');
+      final maxVL = double.tryParse(filters.maxVisibleLight ?? '');
+      final minHR = double.tryParse(filters.minHeatRejection ?? '');
+      final maxHR = double.tryParse(filters.maxHeatRejection ?? '');
+      double? parsePct(String? s) {
+        if (s == null) return null;
+        final m = RegExp(r'-?\d+(?:\.\d+)?').firstMatch(s);
+        return m == null ? null : double.tryParse(m.group(0)!);
+      }
+      final filtered = result.items.where((p) {
+        if (minVL != null || maxVL != null) {
+          final v = parsePct(p.visibleLight);
+          if (v == null) return false;
+          if (minVL != null && v < minVL) return false;
+          if (maxVL != null && v > maxVL) return false;
+        }
+        if (minHR != null || maxHR != null) {
+          final v = parsePct(p.heatRejection);
+          if (v == null) return false;
+          if (minHR != null && v < minHR) return false;
+          if (maxHR != null && v > maxHR) return false;
+        }
+        return true;
+      }).toList();
+
+      final newItems = filtered.map((p) => _ProductItem(
         id: p.id ?? 0,
         brand: p.brand,
         model: p.model,
@@ -192,7 +226,7 @@ class SearchNotifier extends StateNotifier<SearchState> {
 
 final searchProvider =
     StateNotifierProvider<SearchNotifier, SearchState>((ref) {
-  final notifier = SearchNotifier(ref.read(tintRepositoryProvider));
+  final notifier = SearchNotifier(ref.read(tintRepositoryProvider), ref);
 
   // 同步成功後自動刷新搜尋結果與品牌清單
   ref.listen<AsyncValue<SyncState>>(syncStateProvider, (previous, next) {
@@ -203,6 +237,11 @@ final searchProvider =
         ref.invalidate(brandCountsProvider);
       }
     });
+  });
+
+  // 進階篩選變更後自動重新載入
+  ref.listen<FilterState>(advancedFiltersProvider, (previous, next) {
+    notifier.refresh();
   });
 
   return notifier;

@@ -140,18 +140,35 @@ class AppDatabase {
     await batch.commit(noResult: true);
   }
 
-  Future<List<TintProduct>> getAllProducts({int limit = 50, int offset = 0}) async {
+  Future<List<TintProduct>> getAllProducts({
+    int limit = 50,
+    int offset = 0,
+    Set<String>? brandList,
+  }) async {
+    final hasBrandList = brandList != null && brandList.isNotEmpty;
     if (kIsWeb) {
       final sorted = List<TintProduct>.from(_webStore)
         ..sort((a, b) {
           final c = a.brand.compareTo(b.brand);
           return c != 0 ? c : a.model.compareTo(b.model);
         });
-      return sorted.skip(offset).take(limit).toList();
+      final filtered = hasBrandList
+          ? sorted.where((p) => brandList.contains(p.brand)).toList()
+          : sorted;
+      return filtered.skip(offset).take(limit).toList();
     }
     final db = await database;
+    String? where;
+    List<Object?>? whereArgs;
+    if (hasBrandList) {
+      final placeholders = List.filled(brandList.length, '?').join(',');
+      where = 'brand IN ($placeholders)';
+      whereArgs = brandList.toList();
+    }
     final rows = await db.query(
       tableProducts,
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'brand ASC, model ASC',
       limit: limit,
       offset: offset,
@@ -163,8 +180,14 @@ class AppDatabase {
     int limit = 50,
     int offset = 0,
     String? brandFilter,
+    Set<String>? brandList,
   }) async {
+    // 進階篩選的多廠牌優先於單一品牌 chip
+    final hasBrandList = brandList != null && brandList.isNotEmpty;
     if (query.trim().isEmpty) {
+      if (hasBrandList) {
+        return getAllProducts(limit: limit, offset: offset, brandList: brandList);
+      }
       if (brandFilter == null || brandFilter.isEmpty) {
         return getAllProducts(limit: limit, offset: offset);
       }
@@ -190,6 +213,18 @@ class AppDatabase {
       return rows.map(TintProduct.fromMap).toList();
     }
 
+    // 計算品牌條件子句（多選優先於單選）
+    String brandClause = '';
+    final List<Object?> brandArgs = [];
+    if (hasBrandList) {
+      final placeholders = List.filled(brandList.length, '?').join(',');
+      brandClause = ' AND brand IN ($placeholders)';
+      brandArgs.addAll(brandList);
+    } else if (brandFilter != null && brandFilter.isNotEmpty) {
+      brandClause = ' AND brand = ?';
+      brandArgs.add(brandFilter);
+    }
+
     if (kIsWeb) {
       final q = query.trim().toLowerCase();
       var results = _webStore.where((p) {
@@ -197,6 +232,9 @@ class AppDatabase {
             p.model.toLowerCase().contains(q) ||
             p.certNumber.toLowerCase().contains(q);
         if (!match) return false;
+        if (hasBrandList) {
+          return brandList.contains(p.brand);
+        }
         if (brandFilter != null && brandFilter.isNotEmpty) {
           return p.brand == brandFilter;
         }
@@ -225,9 +263,9 @@ class AppDatabase {
         WHERE (brand LIKE ? OR model LIKE ?)
       ''';
       final likeArgs = <dynamic>[likePattern, likePattern];
-      if (brandFilter != null && brandFilter.isNotEmpty) {
-        likeSql += ' AND brand = ?';
-        likeArgs.add(brandFilter);
+      if (brandClause.isNotEmpty) {
+        likeSql += brandClause;
+        likeArgs.addAll(brandArgs);
       }
       likeSql += ' ORDER BY brand ASC, model ASC LIMIT ? OFFSET ?';
       likeArgs.addAll([limit, offset]);
@@ -253,9 +291,10 @@ class AppDatabase {
       )
     ''';
     final ftsArgs = <dynamic>[ftsQuery];
-    if (brandFilter != null && brandFilter.isNotEmpty) {
-      ftsSql += ' AND p.brand = ?';
-      ftsArgs.add(brandFilter);
+    if (brandClause.isNotEmpty) {
+      // 此處 brand 欄位來自別名 p
+      ftsSql += brandClause.replaceAll('AND brand', 'AND p.brand');
+      ftsArgs.addAll(brandArgs);
     }
     final ftsRows = await db.rawQuery(ftsSql, ftsArgs);
     final seen = <String>{};
@@ -272,9 +311,9 @@ class AppDatabase {
       WHERE (brand LIKE ? OR model LIKE ?)
     ''';
     final likeArgs = <dynamic>[likePattern, likePattern];
-    if (brandFilter != null && brandFilter.isNotEmpty) {
-      likeSql += ' AND brand = ?';
-      likeArgs.add(brandFilter);
+    if (brandClause.isNotEmpty) {
+      likeSql += brandClause;
+      likeArgs.addAll(brandArgs);
     }
     final likeRows = await db.rawQuery(likeSql, likeArgs);
     for (final row in likeRows) {

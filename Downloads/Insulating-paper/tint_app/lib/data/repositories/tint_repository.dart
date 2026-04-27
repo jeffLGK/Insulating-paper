@@ -18,6 +18,7 @@ class TintRepository {
   Future<SearchResult> search({
     required String query,
     String? brandFilter,
+    Set<String>? brandList,
     int page = 0,
     int pageSize = 30,
   }) async {
@@ -26,6 +27,7 @@ class TintRepository {
       limit: pageSize,
       offset: page * pageSize,
       brandFilter: brandFilter,
+      brandList: brandList,
     );
     return SearchResult(
       items: products,
@@ -39,10 +41,12 @@ class TintRepository {
   Future<SearchResult> getAll({
     int page = 0,
     int pageSize = 30,
+    Set<String>? brandList,
   }) async {
     final products = await _db.getAllProducts(
       limit: pageSize,
       offset: page * pageSize,
+      brandList: brandList,
     );
     return SearchResult(
       items: products,
