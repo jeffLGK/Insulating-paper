@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import 'favorites_providers.dart';
 import '../search/search_providers.dart';
+import '../search/search_screen.dart' show ProductDetailScreen;
 import '../../data/models/tint_product.dart';
 
 class FavoritesScreen extends ConsumerWidget {
@@ -139,63 +140,71 @@ class _FavoritesCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 0,
       color: colorScheme.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            // 縮圖
-            _Thumbnail(url: product.imageUrl),
-            const SizedBox(width: 14),
-            // 文字資訊
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${product.brand}  ${product.model}',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '認證號：${product.certNumber}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colorScheme.outline,
-                        ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      if (product.visibleLight != null)
-                        _StatChip(
-                          label: '可見光',
-                          value: product.visibleLight!,
-                          color: Colors.blue.shade100,
-                        ),
-                      if (product.heatRejection != null) ...[
-                        const SizedBox(width: 6),
-                        _StatChip(
-                          label: '隔熱',
-                          value: product.heatRejection!,
-                          color: Colors.orange.shade100,
-                        ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ProductDetailScreen(productId: product.id!),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              // 縮圖
+              _Thumbnail(url: product.imageUrl),
+              const SizedBox(width: 14),
+              // 文字資訊
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${product.brand}  ${product.model}',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '認證號：${product.certNumber}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.outline,
+                          ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        if (product.visibleLight != null)
+                          _StatChip(
+                            label: '可見光',
+                            value: product.visibleLight!,
+                            color: _visibleLightColor(product.visibleLight!),
+                          ),
+                        if (product.heatRejection != null) ...[
+                          const SizedBox(width: 6),
+                          _StatChip(
+                            label: '隔熱',
+                            value: product.heatRejection!,
+                            color: Colors.deepOrange.shade400,
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // 移除按鈕
-            IconButton(
-              icon: const Icon(Icons.favorite, color: Colors.red, size: 20),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              onPressed: onRemove,
-            ),
-          ],
+              // 移除按鈕
+              IconButton(
+                icon: const Icon(Icons.favorite, color: Colors.red, size: 20),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: onRemove,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -233,6 +242,25 @@ class _Thumbnail extends StatelessWidget {
   }
 }
 
+/// 依可見光分級回傳合格標識貼紙對應底色
+/// （與 search_screen 的 _visibleLightColor 邏輯保持一致）
+Color _visibleLightColor(String value) {
+  final v = value.replaceAll(' ', '');
+  if (v.contains('70%以上')) {
+    return const Color(0xFFFFEB3B); // 黃底（對應 70%Min 標貼）
+  }
+  if (v.contains('未達70%') || v.contains('40%')) {
+    return const Color(0xFFE0E0E0); // 灰底（對應 40%Min 標貼）
+  }
+  final numStr = v.replaceAll(RegExp(r'[^0-9.]'), '');
+  final pct = double.tryParse(numStr);
+  if (pct != null) {
+    if (pct >= 70) return const Color(0xFFFFEB3B);
+    if (pct >= 40) return const Color(0xFFE0E0E0);
+  }
+  return Colors.red.shade300;
+}
+
 class _StatChip extends StatelessWidget {
   final String label;
   final String value;
@@ -246,6 +274,9 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 深底用白字、淺底用黑字（與 search_screen._StatChip 一致）
+    final textColor =
+        color.computeLuminance() > 0.4 ? Colors.black87 : Colors.white;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -254,7 +285,11 @@ class _StatChip extends StatelessWidget {
       ),
       child: Text(
         '$label $value',
-        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: textColor,
+        ),
       ),
     );
   }
