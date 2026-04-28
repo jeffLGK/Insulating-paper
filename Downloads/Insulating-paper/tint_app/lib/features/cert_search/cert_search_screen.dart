@@ -491,12 +491,27 @@ class _CertResultCard extends StatelessWidget {
   }
 
   Color _vlColor(String value) {
-    final n = double.tryParse(value.replaceAll(RegExp(r'[^0-9.]'), ''));
-    if (n == null) return Colors.blueGrey.shade600;
-    if (n >= 70) return Colors.green.shade600;
-    if (n >= 40) return Colors.amber.shade700;
-    return Colors.red.shade600;
+    return _visibleLightColor(value);
   }
+}
+
+/// 依可見光分級回傳合格標識貼紙對應底色
+/// （與搜尋頁、收藏頁配色一致：70%Min 黃色貼紙 / 40%Min 灰色貼紙）
+Color _visibleLightColor(String value) {
+  final v = value.replaceAll(' ', '');
+  if (v.contains('70%以上')) {
+    return const Color(0xFFFFEB3B); // 黃底（對應 70%Min 標貼）
+  }
+  if (v.contains('未達70%') || v.contains('40%')) {
+    return const Color(0xFFE0E0E0); // 灰底（對應 40%Min 標貼）
+  }
+  final numStr = v.replaceAll(RegExp(r'[^0-9.]'), '');
+  final pct = double.tryParse(numStr);
+  if (pct != null) {
+    if (pct >= 70) return const Color(0xFFFFEB3B);
+    if (pct >= 40) return const Color(0xFFE0E0E0);
+  }
+  return Colors.red.shade300;
 }
 
 class _CertChip extends StatelessWidget {
