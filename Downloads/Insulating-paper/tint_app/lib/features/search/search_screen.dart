@@ -393,11 +393,16 @@ class _ProductCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
+                    // 限 2 行 + ellipsis：避免超長認證號（公司名 + 長型號）
+                    // 折成 3 行撐爆 itemExtent 把下方 chip 裁掉。
+                    // 完整認證號可在點開的詳細頁查看。
                     Text(
                       '認證號：$certNumber',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: colorScheme.outline,
                           ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 6),
                     Row(
