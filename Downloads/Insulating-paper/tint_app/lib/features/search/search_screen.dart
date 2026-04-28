@@ -16,6 +16,8 @@ import '../comparison/comparison_providers.dart';
 import '../comparison/comparison_screen.dart';
 import 'advanced_filters_providers.dart';
 import 'advanced_filters_sheet.dart';
+import '../settings/font_scale_sheet.dart';
+import '../../core/font_scale.dart';
 import '../../core/database/app_database.dart';
 import '../../data/models/tint_product.dart';
 import '../../data/datasources/car_safety_scraper.dart';
@@ -93,7 +95,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             loading: () => const _SyncButton(state: SyncState.idle),
             error: (_, __) => const _SyncButton(state: SyncState.idle),
           ),
-          const SizedBox(width: 8),
+          // 字體大小設定
+          IconButton(
+            tooltip: '字體大小',
+            icon: const Icon(Icons.format_size),
+            onPressed: () => showFontScaleSheet(context),
+          ),
+          const SizedBox(width: 4),
         ],
       ),
       body: Column(
@@ -275,7 +283,7 @@ class _ResultsHeader extends StatelessWidget {
 }
 
 // ── 產品列表 ────────────────────────────────────────────────────────
-class _ProductList extends StatelessWidget {
+class _ProductList extends ConsumerWidget {
   final SearchState state;
   final ScrollController scrollController;
 
@@ -285,12 +293,18 @@ class _ProductList extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fontScale = ref.watch(fontScaleProvider);
+    // 原本 itemExtent 寫死 104 是為了捲動效能，但會把字級放大後的卡片內容
+    // 裁掉（綠色 chip 被切）。中字級時保留原優化；其他字級放棄固定高度，
+    // 讓 ListView 自動測量。700 筆資料下 lazy build 仍可接受。
+    final itemExtent = fontScale == FontScale.medium ? 104.0 : null;
+
     return ListView.builder(
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       itemCount: state.items.length + (state.hasMore ? 1 : 0),
-      itemExtent: 104, // 固定卡片高度（含 10px margin），避免捲動時重算 layout
+      itemExtent: itemExtent,
       addAutomaticKeepAlives: false, // 捲出視窗的 item 立即釋放，減少記憶體累積
       addRepaintBoundaries: true,
       cacheExtent: 600, // 預渲染上下 600px，減少邊緣 jank
@@ -545,14 +559,24 @@ class _Thumbnail extends StatelessWidget {
   }
 }
 
-/// 依可見光百分比回傳對比色
+/// 依可見光分級回傳合格標識貼紙對應底色
+/// （與規格內「70%Min 黃色貼紙 / 40%Min 灰色貼紙」配色一致）
 Color _visibleLightColor(String value) {
-  final numStr = value.replaceAll(RegExp(r'[^0-9.]'), '');
+  final v = value.replaceAll(' ', '');
+  if (v.contains('70%以上')) {
+    return const Color(0xFFFFEB3B); // 黃底（對應 70%Min 標貼）
+  }
+  if (v.contains('未達70%') || v.contains('40%')) {
+    return const Color(0xFFE0E0E0); // 灰底（對應 40%Min 標貼）
+  }
+  // fallback：嘗試解析數字
+  final numStr = v.replaceAll(RegExp(r'[^0-9.]'), '');
   final pct = double.tryParse(numStr);
-  if (pct == null) return Colors.blueGrey.shade600;
-  if (pct >= 70) return Colors.green.shade600;   // 70% 以上：綠色（高透光）
-  if (pct >= 40) return Colors.amber.shade700;   // 40~70%：橘黃色（中透光）
-  return Colors.red.shade600;                     // 40% 以下：紅色（低透光）
+  if (pct != null) {
+    if (pct >= 70) return const Color(0xFFFFEB3B);
+    if (pct >= 40) return const Color(0xFFE0E0E0);
+  }
+  return Colors.red.shade300;
 }
 
 class _StatChip extends StatelessWidget {

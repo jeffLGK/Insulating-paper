@@ -178,8 +178,11 @@ class _ImageMatchScreenState extends ConsumerState<ImageMatchScreen> {
       appBar: AppBar(
         title: const Text('圖像比對'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
+      // 包 SingleChildScrollView：低解析度老舊手機（如 480x800）內容會超出
+      // 螢幕高度，未捲動就會被裁掉；同時把 padding 從 24 縮為 16、spacer
+      // 32→20、16→12，多預留 ~50dp 安全餘裕。
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -216,7 +219,7 @@ class _ImageMatchScreenState extends ConsumerState<ImageMatchScreen> {
               ),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: 20),
 
             // 拍照按鈕
             _BigButton(
@@ -227,7 +230,7 @@ class _ImageMatchScreenState extends ConsumerState<ImageMatchScreen> {
               onTap: disabled ? null : _startCamera,
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
 
             // 上傳按鈕
             _BigButton(
@@ -239,7 +242,7 @@ class _ImageMatchScreenState extends ConsumerState<ImageMatchScreen> {
             ),
 
             if (isLoading) ...[
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
               const Center(
                 child: Column(
                   children: [

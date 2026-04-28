@@ -9,6 +9,7 @@ import '../search/search_screen.dart';
 import '../cert_search/cert_search_screen.dart';
 import '../favorites/favorites_screen.dart';
 import '../image_match/image_match_screen.dart';
+import '../settings/font_scale_sheet.dart';
 import '../../core/app_info.dart';
 import '../../core/database/app_database.dart';
 import '../../data/datasources/car_safety_scraper.dart';
@@ -214,6 +215,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              showFontScaleSheet(context);
+            },
+            icon: const Icon(Icons.format_size, size: 18),
+            label: const Text('字體大小'),
+          ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);

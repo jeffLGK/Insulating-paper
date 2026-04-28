@@ -197,6 +197,11 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
       );
 
   Widget _buildCamera() {
+    // 低解析度老舊手機（< 600dp 高度）：縮小提示文字與快門的距離，
+    // 避免兩塊 Container 被快門按鈕遮住下半段。
+    final screenH = MediaQuery.of(context).size.height;
+    final tipBottom = screenH < 600 ? 105.0 : 140.0;
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -236,7 +241,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
 
         // 提示文字
         Positioned(
-          bottom: 140,
+          bottom: tipBottom,
           left: 16,
           right: 16,
           child: Column(

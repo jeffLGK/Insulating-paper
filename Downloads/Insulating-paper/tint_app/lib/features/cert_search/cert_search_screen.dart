@@ -619,26 +619,37 @@ class _CertProductDetailScreen extends StatelessWidget {
           const SizedBox(height: 8),
 
           // 序號醒目標示
+          // 不用 mainAxisSize.min + 不包 Flexible，否則認證單位過長時會被裁。
+          // 改成全寬橫條，Text 用 Flexible + softWrap 允許自動折行。
           Container(
+            width: double.infinity,
             padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.primaryContainer,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.verified_outlined,
-                    size: 18,
-                    color:
-                        Theme.of(context).colorScheme.onPrimaryContainer),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(Icons.verified_outlined,
+                      size: 18,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onPrimaryContainer),
+                ),
                 const SizedBox(width: 6),
-                Text(
-                  '合格標識序號：${product.certNumber}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                Flexible(
+                  child: Text(
+                    '合格標識序號：${product.certNumber}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color:
+                          Theme.of(context).colorScheme.onPrimaryContainer,
+                    ),
+                    softWrap: true,
                   ),
                 ),
               ],
