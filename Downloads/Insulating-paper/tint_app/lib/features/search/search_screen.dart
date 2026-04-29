@@ -17,6 +17,7 @@ import '../comparison/comparison_screen.dart';
 import 'advanced_filters_providers.dart';
 import 'advanced_filters_sheet.dart';
 import '../settings/font_scale_sheet.dart';
+import '../home/home_screen.dart' show showAppInfoDialog;
 import '../../core/font_scale.dart';
 import '../../core/database/app_database.dart';
 import '../../data/models/tint_product.dart';
@@ -100,6 +101,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             tooltip: '字體大小',
             icon: const Icon(Icons.format_size),
             onPressed: () => showFontScaleSheet(context),
+          ),
+          // 關於：App 版本與最新資料更新時間
+          IconButton(
+            tooltip: '關於',
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => showAppInfoDialog(context),
           ),
           const SizedBox(width: 4),
         ],

@@ -155,87 +155,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _showStartupInfo() async {
-    final count = await AppDatabase.instance.getProductCount();
-    final prefs = await SharedPreferences.getInstance();
-    final lastSyncStr = prefs.getString(kPrefLastSync);
-    final lastSync =
-        lastSyncStr != null ? DateTime.tryParse(lastSyncStr) : null;
-
     if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.shield_outlined),
-            SizedBox(width: 8),
-            Text('認證隔熱紙查尋'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.storage_outlined,
-                    size: 18, color: Colors.blueGrey),
-                const SizedBox(width: 8),
-                Text('目前資料筆數：$count 筆',
-                    style: const TextStyle(fontSize: 15)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.calendar_today_outlined,
-                    size: 18, color: Colors.blueGrey),
-                const SizedBox(width: 8),
-                Text(
-                  lastSync != null
-                      ? '安審發布時間：${DateFormat('yyyy-MM-dd HH:mm').format(lastSync)}'
-                      : '安審發布時間：尚未同步',
-                  style: const TextStyle(fontSize: 15),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                const Icon(Icons.info_outline,
-                    size: 18, color: Colors.blueGrey),
-                const SizedBox(width: 8),
-                Text(
-                  'App 版本：v$kAppVersion ($kAppBuildDate)',
-                  style: const TextStyle(fontSize: 15),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Navigator.pop(ctx);
-              showFontScaleSheet(context);
-            },
-            icon: const Icon(Icons.format_size, size: 18),
-            label: const Text('字體大小'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _showImageStats(context);
-            },
-            child: const Text('圖片統計'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('確定'),
-          ),
-        ],
-      ),
+    await showAppInfoDialog(
+      context,
+      onShowImageStats: () => _showImageStats(context),
     );
   }
 
@@ -283,6 +206,99 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
+}
+
+// ── 關於 / App 資訊對話框 ────────────────────────────────────────────
+//
+// 顯示：App 版本與打包日期、目前資料筆數、最近一次資料同步時間。
+// 從首頁啟動時自動彈出一次，亦提供搜尋頁的「關於」按鈕呼叫。
+Future<void> showAppInfoDialog(
+  BuildContext context, {
+  VoidCallback? onShowImageStats,
+}) async {
+  final count = await AppDatabase.instance.getProductCount();
+  final prefs = await SharedPreferences.getInstance();
+  final lastSyncStr = prefs.getString(kPrefLastSync);
+  final lastSync =
+      lastSyncStr != null ? DateTime.tryParse(lastSyncStr) : null;
+
+  if (!context.mounted) return;
+
+  await showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Row(
+        children: [
+          Icon(Icons.shield_outlined),
+          SizedBox(width: 8),
+          Text('認證隔熱紙查尋'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.storage_outlined,
+                  size: 18, color: Colors.blueGrey),
+              const SizedBox(width: 8),
+              Text('目前資料筆數：$count 筆',
+                  style: const TextStyle(fontSize: 15)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.calendar_today_outlined,
+                  size: 18, color: Colors.blueGrey),
+              const SizedBox(width: 8),
+              Text(
+                lastSync != null
+                    ? '最新資料更新：${DateFormat('yyyy-MM-dd HH:mm').format(lastSync)}'
+                    : '最新資料更新：尚未同步',
+                style: const TextStyle(fontSize: 15),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.info_outline,
+                  size: 18, color: Colors.blueGrey),
+              const SizedBox(width: 8),
+              Text(
+                'App 版本：v$kAppVersion ($kAppBuildDate)',
+                style: const TextStyle(fontSize: 15),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () {
+            Navigator.pop(ctx);
+            showFontScaleSheet(context);
+          },
+          icon: const Icon(Icons.format_size, size: 18),
+          label: const Text('字體大小'),
+        ),
+        if (onShowImageStats != null)
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onShowImageStats();
+            },
+            child: const Text('圖片統計'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('確定'),
+        ),
+      ],
+    ),
+  );
 }
 
 // ── 統計列 ──────────────────────────────────────────────────────────

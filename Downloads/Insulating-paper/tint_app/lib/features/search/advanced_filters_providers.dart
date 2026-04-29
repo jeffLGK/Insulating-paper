@@ -2,44 +2,35 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+/// 可見光穿透率符合的標準
+/// VSCC 認證隔熱紙僅分兩級：符合 40%（未達70%）／符合 70%（70%以上）
+enum VisibleLightStandard {
+  pct40, // 符合 40%（未達70%）
+  pct70, // 符合 70%（70%以上）
+}
+
 /// 高級篩選狀態
 class FilterState {
   final Set<String> selectedBrands;
-  final String? minVisibleLight;
-  final String? maxVisibleLight;
-  final String? minHeatRejection;
-  final String? maxHeatRejection;
+  final Set<VisibleLightStandard> visibleLightStandards;
 
   const FilterState({
     this.selectedBrands = const {},
-    this.minVisibleLight,
-    this.maxVisibleLight,
-    this.minHeatRejection,
-    this.maxHeatRejection,
+    this.visibleLightStandards = const {},
   });
 
   bool get hasActiveFilters =>
-      selectedBrands.isNotEmpty ||
-      minVisibleLight != null ||
-      maxVisibleLight != null ||
-      minHeatRejection != null ||
-      maxHeatRejection != null;
+      selectedBrands.isNotEmpty || visibleLightStandards.isNotEmpty;
 
   FilterState reset() => const FilterState();
 
   FilterState copyWith({
     Set<String>? selectedBrands,
-    String? minVisibleLight,
-    String? maxVisibleLight,
-    String? minHeatRejection,
-    String? maxHeatRejection,
+    Set<VisibleLightStandard>? visibleLightStandards,
   }) {
     return FilterState(
       selectedBrands: selectedBrands ?? this.selectedBrands,
-      minVisibleLight: minVisibleLight ?? this.minVisibleLight,
-      maxVisibleLight: maxVisibleLight ?? this.maxVisibleLight,
-      minHeatRejection: minHeatRejection ?? this.minHeatRejection,
-      maxHeatRejection: maxHeatRejection ?? this.maxHeatRejection,
+      visibleLightStandards: visibleLightStandards ?? this.visibleLightStandards,
     );
   }
 }
@@ -63,20 +54,15 @@ class AdvancedFiltersNotifier extends StateNotifier<FilterState> {
     state = state.copyWith(selectedBrands: updated);
   }
 
-  /// 設置可見光範圍
-  void setVisibleLightRange(String? min, String? max) {
-    state = state.copyWith(
-      minVisibleLight: min,
-      maxVisibleLight: max,
-    );
-  }
-
-  /// 設置隔熱範圍
-  void setHeatRejectionRange(String? min, String? max) {
-    state = state.copyWith(
-      minHeatRejection: min,
-      maxHeatRejection: max,
-    );
+  /// 切換可見光標準選擇
+  void toggleVisibleLightStandard(VisibleLightStandard std) {
+    final updated = {...state.visibleLightStandards};
+    if (updated.contains(std)) {
+      updated.remove(std);
+    } else {
+      updated.add(std);
+    }
+    state = state.copyWith(visibleLightStandards: updated);
   }
 
   /// 重置所有篩選

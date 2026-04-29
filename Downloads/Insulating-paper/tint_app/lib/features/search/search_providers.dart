@@ -171,31 +171,18 @@ class SearchNotifier extends StateNotifier<SearchState> {
           ? await _repo.getTotalCount()
           : state.totalCount;
 
-      // 進階篩選：可見光與隔熱率範圍以 client-side 過濾（資料以字串儲存）
-      final minVL = double.tryParse(filters.minVisibleLight ?? '');
-      final maxVL = double.tryParse(filters.maxVisibleLight ?? '');
-      final minHR = double.tryParse(filters.minHeatRejection ?? '');
-      final maxHR = double.tryParse(filters.maxHeatRejection ?? '');
-      double? parsePct(String? s) {
-        if (s == null) return null;
-        final m = RegExp(r'-?\d+(?:\.\d+)?').firstMatch(s);
-        return m == null ? null : double.tryParse(m.group(0)!);
-      }
-      final filtered = result.items.where((p) {
-        if (minVL != null || maxVL != null) {
-          final v = parsePct(p.visibleLight);
-          if (v == null) return false;
-          if (minVL != null && v < minVL) return false;
-          if (maxVL != null && v > maxVL) return false;
-        }
-        if (minHR != null || maxHR != null) {
-          final v = parsePct(p.heatRejection);
-          if (v == null) return false;
-          if (minHR != null && v < minHR) return false;
-          if (maxHR != null && v > maxHR) return false;
-        }
-        return true;
-      }).toList();
+      // 進階篩選：可見光僅分兩級（符合40%／符合70%），以 client-side 過濾
+      final stds = filters.visibleLightStandards;
+      final filtered = stds.isEmpty
+          ? result.items
+          : result.items.where((p) {
+              final v = (p.visibleLight ?? '').replaceAll(' ', '');
+              final is70 = v.contains('70%以上');
+              final is40 = v.contains('未達70%') || v.contains('40%');
+              if (stds.contains(VisibleLightStandard.pct70) && is70) return true;
+              if (stds.contains(VisibleLightStandard.pct40) && is40) return true;
+              return false;
+            }).toList();
 
       final newItems = filtered.map((p) => _ProductItem(
         id: p.id ?? 0,

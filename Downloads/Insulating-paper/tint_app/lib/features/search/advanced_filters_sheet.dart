@@ -68,25 +68,9 @@ class AdvancedFiltersSheet extends ConsumerWidget {
                   ),
                   const SizedBox(height: 24),
 
-                  // 可見光範圍
-                  _RangeFilter(
-                    title: '可見光穿透率範圍',
-                    minValue: filterState.minVisibleLight,
-                    maxValue: filterState.maxVisibleLight,
-                    onChanged: (min, max) {
-                      ref.read(advancedFiltersProvider.notifier).setVisibleLightRange(min, max);
-                    },
-                  ),
-                  const SizedBox(height: 24),
-
-                  // 隔熱範圍
-                  _RangeFilter(
-                    title: '總熱能阻隔率範圍',
-                    minValue: filterState.minHeatRejection,
-                    maxValue: filterState.maxHeatRejection,
-                    onChanged: (min, max) {
-                      ref.read(advancedFiltersProvider.notifier).setHeatRejectionRange(min, max);
-                    },
+                  // 可見光穿透率：兩級標準
+                  _VisibleLightStandardFilter(
+                    selected: filterState.visibleLightStandards,
                   ),
                 ],
               ),
@@ -163,92 +147,42 @@ class _BrandFilter extends ConsumerWidget {
   }
 }
 
-class _RangeFilter extends StatefulWidget {
-  final String title;
-  final String? minValue;
-  final String? maxValue;
-  final Function(String?, String?) onChanged;
+class _VisibleLightStandardFilter extends ConsumerWidget {
+  final Set<VisibleLightStandard> selected;
 
-  const _RangeFilter({
-    required this.title,
-    required this.minValue,
-    required this.maxValue,
-    required this.onChanged,
-  });
+  const _VisibleLightStandardFilter({required this.selected});
 
   @override
-  State<_RangeFilter> createState() => _RangeFilterState();
-}
-
-class _RangeFilterState extends State<_RangeFilter> {
-  late final TextEditingController _minController;
-  late final TextEditingController _maxController;
-
-  @override
-  void initState() {
-    super.initState();
-    _minController = TextEditingController(text: widget.minValue ?? '');
-    _maxController = TextEditingController(text: widget.maxValue ?? '');
-  }
-
-  @override
-  void dispose() {
-    _minController.dispose();
-    _maxController.dispose();
-    super.dispose();
-  }
-
-  void _updateRange() {
-    widget.onChanged(
-      _minController.text.isEmpty ? null : _minController.text,
-      _maxController.text.isEmpty ? null : _maxController.text,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          widget.title,
+          '可見光穿透率',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
         ),
         const SizedBox(height: 12),
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _minController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  hintText: '最小值',
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                onChanged: (_) => _updateRange(),
-              ),
+            FilterChip(
+              selected: selected.contains(VisibleLightStandard.pct40),
+              label: const Text('符合 40%'),
+              onSelected: (_) {
+                ref.read(advancedFiltersProvider.notifier)
+                    .toggleVisibleLightStandard(VisibleLightStandard.pct40);
+              },
             ),
-            const SizedBox(width: 8),
-            const Text('~'),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _maxController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  hintText: '最大值',
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                onChanged: (_) => _updateRange(),
-              ),
+            FilterChip(
+              selected: selected.contains(VisibleLightStandard.pct70),
+              label: const Text('符合 70%'),
+              onSelected: (_) {
+                ref.read(advancedFiltersProvider.notifier)
+                    .toggleVisibleLightStandard(VisibleLightStandard.pct70);
+              },
             ),
           ],
         ),
