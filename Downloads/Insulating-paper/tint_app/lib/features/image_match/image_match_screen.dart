@@ -34,16 +34,6 @@ class _ImageMatchScreenState extends ConsumerState<ImageMatchScreen> {
     return status.isGranted;
   }
 
-  Future<bool> _requestPhotosPermission() async {
-    if (kIsWeb) return true;
-    final status = await Permission.photos.request();
-    if (status.isPermanentlyDenied && mounted) {
-      _showPermissionDialog('照片');
-      return false;
-    }
-    return status.isGranted || status.isLimited;
-  }
-
   void _showPermissionDialog(String permType) {
     showDialog(
       context: context,
@@ -132,8 +122,6 @@ class _ImageMatchScreenState extends ConsumerState<ImageMatchScreen> {
         _showWebNotSupported();
         return;
       }
-      final granted = await _requestPhotosPermission();
-      if (!granted || !mounted) return;
 
       final picker = ImagePicker();
       final xFile = await picker.pickImage(
