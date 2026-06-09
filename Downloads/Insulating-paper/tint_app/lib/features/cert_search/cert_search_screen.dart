@@ -116,6 +116,19 @@ class _CertSearchScreenState extends State<CertSearchScreen> {
       appBar: AppBar(title: const Text('合格標識序號查詢')),
       body: Column(
         children: [
+          // ── 免責聲明（紅字）─────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+            child: Text(
+              '本查詢僅供參考，完整資訊以 VSCC 網站資訊為準。',
+              style: TextStyle(
+                color: Colors.red.shade400,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+
           // ── 連網提示 ────────────────────────────────────────────
           Container(
             width: double.infinity,

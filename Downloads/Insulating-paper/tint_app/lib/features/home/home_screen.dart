@@ -221,6 +221,7 @@ Future<void> showAppInfoDialog(
   final lastSyncStr = prefs.getString(kPrefLastSync);
   final lastSync =
       lastSyncStr != null ? DateTime.tryParse(lastSyncStr) : null;
+  final versionLabel = await getAppVersionLabel();
 
   if (!context.mounted) return;
 
@@ -231,7 +232,7 @@ Future<void> showAppInfoDialog(
         children: [
           Icon(Icons.shield_outlined),
           SizedBox(width: 8),
-          Text('認證隔熱紙查尋'),
+          Text('認證隔熱紙查詢'),
         ],
       ),
       content: Column(
@@ -268,7 +269,7 @@ Future<void> showAppInfoDialog(
                   size: 18, color: Colors.blueGrey),
               const SizedBox(width: 8),
               Text(
-                'App 版本：v$kAppVersion ($kAppBuildDate)',
+                'App 版本：$versionLabel',
                 style: const TextStyle(fontSize: 15),
               ),
             ],

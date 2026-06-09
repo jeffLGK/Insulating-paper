@@ -68,7 +68,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       // 鍵盤彈出時不強制 resize body，避免長清單每 frame 重新 layout 造成卡頓
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        title: const Text('隔熱紙認證查詢'),
+        title: const Text('認證隔熱紙查詢'),
         actions: [
           // 對比按鈕
           ref.watch(comparisonProvider).isNotEmpty
@@ -96,23 +96,56 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             loading: () => const _SyncButton(state: SyncState.idle),
             error: (_, __) => const _SyncButton(state: SyncState.idle),
           ),
-          // 字體大小設定
-          IconButton(
-            tooltip: '字體大小',
-            icon: const Icon(Icons.format_size),
-            onPressed: () => showFontScaleSheet(context),
-          ),
-          // 關於：App 版本與最新資料更新時間
-          IconButton(
-            tooltip: '關於',
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => showAppInfoDialog(context),
+          // 更多：字體大小、關於（收進溢出選單以釋放標題空間，避免長標題被截斷）
+          PopupMenuButton<String>(
+            tooltip: '更多',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              switch (value) {
+                case 'font':
+                  showFontScaleSheet(context);
+                  break;
+                case 'about':
+                  showAppInfoDialog(context);
+                  break;
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'font',
+                child: ListTile(
+                  leading: Icon(Icons.format_size),
+                  title: Text('字體大小'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'about',
+                child: ListTile(
+                  leading: Icon(Icons.info_outline),
+                  title: Text('關於'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 4),
         ],
       ),
       body: Column(
         children: [
+          // ── 免責聲明（紅字）─────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: Text(
+              '本查詢僅供參考，完整資訊以 VSCC 網站資訊為準。',
+              style: TextStyle(
+                color: Colors.red.shade400,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
           // ── 搜尋區域 ─────────────────────────────────────────
           _SearchBar(controller: _searchController),
           _BrandFilterChips(),
