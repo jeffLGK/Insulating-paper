@@ -2,10 +2,17 @@
 // Tests actual web scraping from car-safety.org.tw
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tint_app/core/network/twca_http_overrides.dart';
 import 'package:tint_app/data/datasources/car_safety_scraper.dart';
 import 'package:tint_app/data/models/tint_product.dart';
 
 void main() {
+  // 需初始化 binding 並安裝 TWCA 憑證，連線 b2c.vscc.org.tw 才不會
+  // 因伺服器漏送中繼憑證而 TLS 失敗。
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(installTwcaHttpOverrides);
+
   group('CarSafetyScraper Integration Tests', () {
     late CarSafetyScraper scraper;
 

@@ -16,11 +16,16 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'core/font_scale.dart';
+import 'core/network/twca_http_overrides.dart';
 import 'features/home/home_screen.dart';
 import 'features/sync/sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 安裝 TWCA 憑證鏈（補上 b2c.vscc.org.tw 漏送的中繼憑證）。
+  // 須在任何網路請求（同步、圖片下載）前完成。
+  await installTwcaHttpOverrides();
 
   // 限制圖片快取，避免長清單連續捲動造成記憶體堆積
   PaintingBinding.instance.imageCache

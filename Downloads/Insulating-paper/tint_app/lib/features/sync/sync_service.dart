@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Directory, File, Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
 import '../../core/image/image_hasher.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
@@ -10,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../../core/database/app_database.dart';
+import '../../core/network/twca_http_overrides.dart';
 import '../../data/datasources/car_safety_scraper.dart';
 import '../../data/models/tint_product.dart';
 
@@ -22,6 +24,10 @@ const String kPrefDataVersion = 'data_version';
 void callbackDispatcher() {
   Workmanager().executeTask((taskName, inputData) async {
     if (taskName == kSyncTaskName) {
+      // 背景同步跑在獨立 isolate，HttpOverrides.global 不跨 isolate，
+      // 須在此 isolate 重新安裝 TWCA 憑證，否則圖片下載會 TLS 失敗。
+      WidgetsFlutterBinding.ensureInitialized();
+      await installTwcaHttpOverrides();
       await SyncService.instance.syncNow(silent: true);
     }
     return Future.value(true);

@@ -11,6 +11,14 @@ import 'package:http/http.dart' as http;
 import '../models/tint_product.dart';
 
 class CarSafetyScraper {
+  /// [client] 可注入自訂 HTTP client（測試用）；留空時用預設 client。
+  ///
+  /// 連線 b2c.vscc.org.tw 所需的 TWCA 憑證鏈，由全域 HttpOverrides
+  /// （installTwcaHttpOverrides）統一補上，這裡不需處理憑證。
+  CarSafetyScraper({http.Client? client}) : _client = client ?? http.Client();
+
+  final http.Client _client;
+
   static const String _apiUrl =
       'https://b2c.vscc.org.tw/HeatInsulationFilmProductApi/GetProductList';
 
@@ -115,7 +123,7 @@ class CarSafetyScraper {
     };
 
     try {
-      final response = await http
+      final response = await _client
           .post(Uri.parse(_apiUrl), headers: _headers, body: body)
           .timeout(_timeout);
 
