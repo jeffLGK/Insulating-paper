@@ -1,5 +1,3 @@
-import 'dart:math';
-
 /// 從 OCR 原始文字中解析隔熱紙標貼的結構化資訊。
 ///
 /// 典型標貼文字範例：
@@ -22,7 +20,70 @@ class LabelTextParser {
     'MOT', 'GBS', 'GRA', 'GMK', 'AAK', 'AAP',
     'ACT', 'AEV', 'AKP', 'AVN', 'AVK', 'AUV', 'ATK',
     'MIN', 'VLT', 'USA', 'ALV', 'AUL', 'AGC', 'AUH',
+    // >>> RULE_BUILDER_TRIGGERS
+    'WINDOW',
+    'FILMS',
+    // <<< RULE_BUILDER_TRIGGERS
   ];
+
+  // ── OCR 誤讀／品牌正規化對應（前處理階段套用 replaceAll） ─────────
+  //
+  // 規則：text.replaceAll(key, value)，在分割 token 前先把 OCR 常見誤讀字串
+  // 修正成正確品牌字。例：'CPX' → 'CLEARPLEX'（normalize 後可匹配 'Clear Plex'）。
+  static const _ocrReplacements = <String, String>{
+    'CPX': 'CLEARPLEX',
+    // >>> RULE_BUILDER_REPLACEMENTS
+    '550': 'S50',
+    'G570': 'GS70',
+    // <<< RULE_BUILDER_REPLACEMENTS
+  };
+
+  /// 依 OCR 文字中出現的品牌關鍵字，套用該品牌的「文字層級」特殊前處理。
+  static String _applyBrandSpecialRules(String text) {
+    // COSMI（可舒您）：OCR 常把型號中的 '-' 誤讀成 '_'，還原回來
+    if (text.contains('COSMI') || text.contains('可舒您')) {
+      text = text.replaceAll('_', '-');
+    }
+    return text;
+  }
+
+  // ── CAROYAL 系列裸數字補字母前綴（token 層級查表，對應不規則） ──
+  // key = '系列詞_數字'（VLT/% 已在前面移除，故系列詞與數字相鄰）。
+  static const _caroyalTokenMap = <String, String>{
+    'RSUPREME_70': 'RS7', 'RSUPREME_40': 'RS4',
+    'SUPREME_70': 'SUPREME S7', 'SUPREME_45': 'SUPREME S5',
+    'PURITY_75': 'PURITY P75', 'PURITY_45': 'PURITY P45',
+    'ROYAL_75': 'ROYAL R75', 'ROYAL_45': 'ROYAL R45',
+    'GLORY_70': 'GLORY G70', 'GLORY_55': 'GLORY G55', 'GLORY_45': 'GLORY G45',
+    'CAT_70': 'CAT70',
+  };
+
+  /// 依 OCR 文字中出現的品牌關鍵字，套用該品牌的「token 層級」特殊規則。
+  static List<String> _applyBrandTokenRules(List<String> tokens, String rawUpper) {
+    // CAROYAL：把相鄰的「系列詞 + 裸數字」依查表轉成型號代碼
+    if (rawUpper.contains('CAROYAL')) {
+      final out = <String>[];
+      for (int i = 0; i < tokens.length; i++) {
+        if (i + 1 < tokens.length) {
+          final mapped = _caroyalTokenMap['${tokens[i]}_${tokens[i + 1]}'];
+          if (mapped != null) {
+            out.addAll(mapped.split(' '));
+            i++; // 跳過已消化的數字 token
+            continue;
+          }
+        }
+        out.add(tokens[i]);
+      }
+      tokens = out;
+    }
+    // KORAAN：移除尾端獨立的可見光數字 token（如 KN-N70 之後的 70/40）
+    if (rawUpper.contains('KORAAN')) {
+      while (tokens.isNotEmpty && RegExp(r'^\d+$').hasMatch(tokens.last)) {
+        tokens.removeLast();
+      }
+    }
+    return tokens;
+  }
 
   // ── 公開方法 ────────────────────────────────────────────────────
 
@@ -65,9 +126,15 @@ class LabelTextParser {
     // ── 步驟 1：轉大寫 ────────────────────────────────────────────
     String text = rawText.toUpperCase();
 
-    // ── 步驟 2：CPX → CLEARPLEX（品牌對應） ─────────────────────
-    // normalize() 會將 'CLEARPLEX' 與資料庫 'Clear Plex' 統一為 'CLEARPLEX'
-    text = text.replaceAll('CPX', 'CLEARPLEX');
+    // ── 步驟 2a：廠牌條件式特殊規則（COSMI/CAROYAL，依 OCR 內品牌字觸發） ──
+    text = _applyBrandSpecialRules(text);
+
+    // ── 步驟 2b：OCR 誤讀／品牌對應（如 CPX → CLEARPLEX） ─────────
+    // 以「token 起始邊界」套用（前一字非英數才取代），避免 550→S50
+    // 誤傷 FSK BW550（550 為字尾不取代）。注意：對應 key 僅限英數/中文。
+    _ocrReplacements.forEach((from, to) {
+      text = text.replaceAllMapped(RegExp('(?<![A-Z0-9])$from'), (_) => to);
+    });
 
     // ── 步驟 3：分割成 words（以空白、斜線為分隔符，保留 `-`） ───
     final words = text
@@ -116,7 +183,10 @@ class LabelTextParser {
       if (!tokens.contains(clean)) tokens.add(clean);
     }
 
-    return ParsedLabel(tokens: tokens, rawText: rawText);
+    // ── 步驟 7：廠牌條件式 token 規則（CAROYAL 補前綴、KORAAN 去尾數） ──
+    final finalTokens = _applyBrandTokenRules(tokens, rawText.toUpperCase());
+
+    return ParsedLabel(tokens: finalTokens, rawText: rawText);
   }
 }
 
