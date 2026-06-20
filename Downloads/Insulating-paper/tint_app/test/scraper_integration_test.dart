@@ -117,11 +117,11 @@ void main() {
 
       expect(
         result.sourceUrl,
-        contains('car-safety.org.tw'),
+        contains('b2c.vscc.org.tw'),
       );
       expect(
         result.sourceUrl,
-        contains('OpID=536'),
+        contains('GetProductList'),
       );
     });
 
