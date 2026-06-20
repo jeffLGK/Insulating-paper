@@ -18,8 +18,9 @@ make_feature_graphic.py
 count_images.ps1
 query_api.ps1
 
-# Test images folder
-隔熱紙測試圖/
+# Test images folder（圖片本身不進版控，但保留 OCR 辨識規則清單）
+隔熱紙測試圖/*
+!隔熱紙測試圖/重要-隔熱紙OCR辨識規則.xlsx
 
 # Local research drafts (not part of project)
 自行研究計畫概述表.md
