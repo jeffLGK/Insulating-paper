@@ -53,30 +53,50 @@ class CarSafetyScraper {
     );
   }
 
-  /// 抓取所有產品，支援分頁
-  /// 若偵測到回傳資料與上一頁相同（API 分頁失效），提早結束避免重複請求。
-  Future<ScraperResult> fetchProducts() async {
-    final products = <TintProduct>[];
-    final seenKeys = <String>{};
-    int pageIndex = 1;
-    int totalPages = 1;
+  /// 同時平行抓取的最大頁數，避免一次對伺服器開太多連線
+  static const int _pageConcurrency = 6;
 
-    do {
-      final result = await _fetchPage(pageIndex);
+  /// 抓取所有產品，支援分頁。
+  ///
+  /// 先抓第 1 頁取得 totalPages，後續頁面以 [_pageConcurrency] 為一批平行下載，
+  /// 大幅縮短整體等待時間（原本 ~38 頁循序下載約需 30 秒以上）。
+  ///
+  /// [onProgress] 每抓完一批就回報 (已完成頁數, 總頁數)，供 UI 顯示進度。
+  /// 以 certNumber 去重；若 API 分頁失效（每頁回傳相同資料），重複資料會被自動
+  /// 合併，不會造成重複或無限迴圈（頁數上限由 totalPages 限制）。
+  Future<ScraperResult> fetchProducts({
+    void Function(int done, int total)? onProgress,
+  }) async {
+    // 以 certNumber 為鍵去重，並保留插入順序（LinkedHashMap）
+    final byKey = <String, TintProduct>{};
+    void mergeProducts(List<TintProduct> products) {
+      for (final product in products) {
+        byKey.putIfAbsent(product.certNumber, () => product);
+      }
+    }
 
-      // 計算本頁新增的 key 數量，若無新資料代表 API 分頁失效，提早結束
-      final pageKeys = result.products.map((p) => p.certNumber).toSet();
-      final newKeys = pageKeys.difference(seenKeys);
-      if (newKeys.isEmpty) break;
+    // 第 1 頁先取得 totalPages
+    final first = await _fetchPage(1);
+    final totalPages = first.totalPages < 1 ? 1 : first.totalPages;
+    mergeProducts(first.products);
+    onProgress?.call(1, totalPages);
 
-      seenKeys.addAll(pageKeys);
-      products.addAll(result.products);
-      totalPages = result.totalPages;
-      pageIndex++;
-    } while (pageIndex <= totalPages);
+    if (totalPages > 1) {
+      final remaining = [for (int page = 2; page <= totalPages; page++) page];
+      int done = 1;
+      for (int i = 0; i < remaining.length; i += _pageConcurrency) {
+        final batch = remaining.skip(i).take(_pageConcurrency).toList();
+        final results = await Future.wait(batch.map(_fetchPage));
+        for (final result in results) {
+          mergeProducts(result.products);
+        }
+        done += batch.length;
+        onProgress?.call(done, totalPages);
+      }
+    }
 
     return ScraperResult(
-      products: products,
+      products: byKey.values.toList(),
       fetchedAt: DateTime.now(),
       sourceUrl: _apiUrl,
     );

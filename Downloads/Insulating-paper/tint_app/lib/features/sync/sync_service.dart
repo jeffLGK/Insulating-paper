@@ -113,12 +113,24 @@ class SyncService {
     _emit(SyncState(
       status: silent ? SyncStatus.idle : SyncStatus.syncing,
       message: '下載資料中...',
-      progressMessage: '正在取得產品資料...',
+      progressMessage: '正在連線伺服器...',
       progress: 0.0,
     ));
 
     try {
-      final scraperResult = await _scraper.fetchProducts();
+      // 抓取階段佔進度條前 10%（0.0 ~ 0.1），逐頁回報避免進度條長時間空轉
+      final scraperResult = await _scraper.fetchProducts(
+        onProgress: silent
+            ? null
+            : (done, total) {
+                _emit(SyncState(
+                  status: SyncStatus.syncing,
+                  message: '下載資料中...',
+                  progressMessage: '取得產品資料 $done / $total 頁',
+                  progress: total > 0 ? 0.1 * (done / total) : 0.0,
+                ));
+              },
+      );
 
       _emit(SyncState(
         status: silent ? SyncStatus.idle : SyncStatus.syncing,
