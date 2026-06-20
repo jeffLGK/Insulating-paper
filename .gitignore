@@ -25,6 +25,9 @@ query_api.ps1
 自行研究計畫概述表.md
 隔熱紙查詢APP簡報_文字稿.md
 
+# Deck build artifacts (presentation generation)
+_deck_build/
+
 # IDE / Editor
 .claude/
 .vscode/
