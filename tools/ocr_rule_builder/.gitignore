@@ -1,0 +1,10 @@
+# 下載的標貼圖快取
+cache/
+# 含 API 金鑰，不可進版控
+config.json
+# Python
+__pycache__/
+*.pyc
+# 零散截圖／圖片(非工具原始碼)
+*.png
+*.jpg

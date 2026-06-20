@@ -1,0 +1,9 @@
+{
+  "_comment": "複製此檔為 config.json 並填入你的 Google Cloud Vision API 金鑰。也可改用環境變數 GOOGLE_VISION_API_KEY。",
+  "google_vision_api_key": "在此貼上你的 GCV API 金鑰",
+  "ocr_engine": "gcv",
+  "_ocr_engine_options": "gcv = Google Cloud Vision(需金鑰)；mock = 假資料(離線測試管線用，不可用來建真實規則)",
+  "_paths_comment": "下列路徑留空會自動以本工具相對位置推算，通常不必填。",
+  "xlsx_path": "",
+  "dart_parser_path": ""
+}
