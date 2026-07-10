@@ -21,6 +21,6 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify that the app title is displayed.
-    expect(find.text('隔熱紙認證查詢'), findsWidgets);
+    expect(find.text('認證隔熱紙查詢'), findsWidgets);
   });
 }
