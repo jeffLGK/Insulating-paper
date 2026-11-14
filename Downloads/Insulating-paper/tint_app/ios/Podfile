@@ -1,0 +1,86 @@
+# ios/Podfile
+#
+# 本專案 iOS 原生相依設定。三個非預設的重點（Mac 上第一次 pod install 前請勿刪）：
+#
+#   1. platform / $iOSVersion = 15.5
+#      Google ML Kit 6.x（文字辨識）要求 iOS 15.5 以上，因此整個 App
+#      最低支援版本為 iOS 15.5（iPhone 6s 及之後機型皆可）。
+#
+#   2. pod 'GoogleMLKit/TextRecognitionChinese'
+#      google_mlkit_text_recognition 在 iOS 預設只包含 Latin 辨識模型，
+#      中文必須另外加這個 pod，否則標貼上的中文（廠牌、型號、品名）
+#      完全辨識不到。對應 Android 端 android/app/build.gradle.kts 的
+#      com.google.mlkit:text-recognition-chinese。
+#
+#   3. GCC_PREPROCESSOR_DEFINITIONS
+#      permission_handler 若不指定巨集，會把「所有」權限編進 App，
+#      送審時 Apple 會要求解釋未使用的權限（常見退件原因）。
+#      本 App 只用到相機（Permission.camera）與相片選取，故僅開這兩項。
+
+platform :ios, '15.5'
+$iOSVersion = '15.5'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+
+  # 中文（繁體／簡體）文字辨識模型；版本需與 google_mlkit_text_recognition
+  # podspec 的 GoogleMLKit/TextRecognition 相同（目前 ~> 6.0.0）。
+  pod 'GoogleMLKit/TextRecognitionChinese', '~> 6.0.0'
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.build_configurations.each do |config|
+    config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = $iOSVersion
+  end
+
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    target.build_configurations.each do |config|
+      # 把所有 pod 的最低版本拉到 15.5（ML Kit 需求）
+      current = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+      if current.nil? || Gem::Version.new(current) < Gem::Version.new($iOSVersion)
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = $iOSVersion
+      end
+
+      # permission_handler：只編入實際使用的權限
+      existing = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+      existing = existing.split(' ') if existing.is_a?(String)
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = (existing + [
+        'PERMISSION_CAMERA=1',
+        'PERMISSION_PHOTOS=1',
+      ]).uniq
+    end
+  end
+end
