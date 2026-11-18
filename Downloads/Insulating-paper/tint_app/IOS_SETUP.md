@@ -34,23 +34,46 @@ xcodebuild -downloadPlatform iOS
 # (4) 安裝 Homebrew
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# (5) 安裝 CocoaPods 與 Flutter（用 Homebrew，避免系統 Ruby 權限問題）
+# (5) 安裝 CocoaPods（用 Homebrew，避免系統 Ruby 權限問題）
 brew install cocoapods
-brew install --cask flutter
 
-# (6) 驗證
+# (6) 安裝 Flutter，版本鎖定與 Windows 端一致（勿用 brew 裝，會自動裝成最新版）
+git clone https://github.com/flutter/flutter.git -b 3.41.6 --depth 1 ~/development/flutter
+echo 'export PATH="$HOME/development/flutter/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+
+# (7) 驗證
 flutter doctor -v
+flutter --version   # 應顯示 3.41.6
 ```
 
 `flutter doctor` 的 Android 項目顯示紅字可以忽略（Mac 上不需要編 Android 版）。
+
+### 為什麼要鎖 3.41.6
+
+Windows 端目前是 **Flutter 3.41.6 stable / Dart 3.11.4**（`.metadata` 的 revision `db50e201`，
+`pubspec.lock` 要求 `flutter >=3.38.4`）。三台機器若各自裝「當下最新版」，
+`pubspec.lock` 會被不同版本反覆改寫、iOS 與 Android 的產出也可能不一致。
+長期要管多台機器的話，改用 [FVM](https://fvm.app/) 比手動 clone 好維護。
 
 ---
 
 ## 2. 取得專案並建置
 
+> **動手前先確認 Windows 端沒有未提交的變更**，在 Windows 跑 `git status`，
+> 有東西就先 commit + push。否則 Mac 上 clone 到的是舊狀態，
+> 兩邊的 `pubspec.lock` 很容易再分叉。
+
+`.git` 約 377MB（歷史含簡報與圖片），用 partial clone 可以省掉大量舊 blob 下載：
+
 ```bash
-git clone <本專案的 git 位址> && cd Insulating-paper/Downloads/Insulating-paper/tint_app
+git clone --filter=blob:none https://github.com/jeffLGK/Insulating-paper.git
+cd Insulating-paper/Downloads/Insulating-paper/tint_app
 ```
+
+專案在 repo 內的路徑就是 `Downloads/Insulating-paper/tint_app`，
+**不要在 Mac 上自行搬動目錄位置**，否則兩邊路徑分叉。
+也不要用 USB 或雲端硬碟複製整個資料夾過去——裡面的 `build/`、`.dart_tool/`、
+`.flutter-plugins-dependencies`（內含 Windows 絕對路徑）都是本機狀態，搬過去只會製造問題。
 
 ```bash
 flutter pub get
@@ -189,3 +212,18 @@ flutter build ipa
 
 > Dart 程式碼（`lib/`）完全共用，後續功能開發仍可在 Windows 進行；
 > 只有「編 iOS 版」與「上架」這兩件事需要 Mac。
+
+---
+
+## 8. 多機維護注意事項
+
+- **Android 上架金鑰只存在 Windows 開發機，且不在版控內**
+  （`key.properties` 與 keystore 都被 `.gitignore` 排除）。
+  務必確認有離線備份——遺失後就無法再更新 Play 商店上的 `com.jefflgk.tintapp`。
+  Android 版請固定在 Windows 出，不要試著搬到 Mac。
+- **iOS 的簽章憑證反過來只在 Mac 的鑰匙圈裡**，由 Xcode 自動管理；
+  若日後要上 CI（GitHub Actions macOS runner），憑證與 Provisioning Profile
+  的匯出管理較繁瑣，初期建議維持手動建置。
+- 三台機器的 Flutter 版本要一致（見第 1 節）。
+- 根目錄的 `docs/` 是 GitHub Pages 的隱私權政策（對外公開），
+  開發文件請勿放進該目錄。
