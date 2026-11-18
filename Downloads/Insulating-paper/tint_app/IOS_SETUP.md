@@ -37,23 +37,48 @@ xcodebuild -downloadPlatform iOS
 # (5) 安裝 CocoaPods（用 Homebrew，避免系統 Ruby 權限問題）
 brew install cocoapods
 
-# (6) 安裝 Flutter，版本鎖定與 Windows 端一致（勿用 brew 裝，會自動裝成最新版）
-git clone https://github.com/flutter/flutter.git -b 3.41.6 --depth 1 ~/development/flutter
+# (6) 安裝 Flutter 3.44.9（勿用 brew 裝，會自動裝成最新版）
+git clone https://github.com/flutter/flutter.git -b 3.44.9 --depth 1 ~/development/flutter
 echo 'export PATH="$HOME/development/flutter/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 
 # (7) 驗證
 flutter doctor -v
-flutter --version   # 應顯示 3.41.6
+flutter --version   # 應顯示 3.44.9
 ```
 
 `flutter doctor` 的 Android 項目顯示紅字可以忽略（Mac 上不需要編 Android 版）。
 
-### 為什麼要鎖 3.41.6
+### 為什麼要鎖 3.44.9
 
-Windows 端目前是 **Flutter 3.41.6 stable / Dart 3.11.4**（`.metadata` 的 revision `db50e201`，
-`pubspec.lock` 要求 `flutter >=3.38.4`）。三台機器若各自裝「當下最新版」，
-`pubspec.lock` 會被不同版本反覆改寫、iOS 與 Android 的產出也可能不一致。
+**本專案三台機器（筆電、桌機、Mac）統一使用 Flutter 3.44.9 stable。**
+Play 商店上的 1.0.9+10 就是 3.44 這條線建出來的，iOS 首版沿用同一版最安全。
+要升版時三台一起升，並重跑一次測試與實機驗證。
+
+若各機器自己裝「當下最新版」，`pubspec.lock` 會被不同版本反覆改寫
+（下面說明原因），iOS 與 Android 的產出也可能不一致。
 長期要管多台機器的話，改用 [FVM](https://fvm.app/) 比手動 clone 好維護。
+
+### 用 pubspec.lock 反推某台機器的 Flutter 版本
+
+`meta` 與 `test_api` 這兩個套件是被 Flutter SDK **寫死成固定版本**的
+（見 SDK 內的 `packages/flutter/pubspec.yaml` 與 `packages/flutter_test/pubspec.yaml`），
+所以 `pubspec.lock` 裡的值可以直接反推出產生它的 Flutter 版本：
+
+| Flutter | `meta` | `test_api` |
+|---|---|---|
+| 3.41.0 ~ 3.41.9 | `1.17.0` | 0.7.8 ~ 0.7.10 |
+| **3.44.0 ~ 3.44.9（本專案）** | **`1.18.0`** | **`0.7.11`** |
+| 3.47.0 ~ 3.47.9 | `^1.18.3` | `0.7.12` |
+| 3.50.0 | `^1.19.0` | `0.7.14` |
+
+**症狀：** 某台機器 `flutter pub get` 後，`pubspec.lock` 的 `meta` / `test_api`
+莫名被改動（且 `git checkout` 丟棄後又再出現）。
+**原因：** 那台機器的 Flutter 版本和別台不同，SDK 的固定 pin 會強制覆寫。
+**處理：** 把該機器切到 3.44.9，而不是去改 lock：
+
+```bash
+cd <FLUTTER_ROOT> && git checkout -B stable 3.44.9 && flutter --version
+```
 
 ---
 
@@ -224,6 +249,6 @@ flutter build ipa
 - **iOS 的簽章憑證反過來只在 Mac 的鑰匙圈裡**，由 Xcode 自動管理；
   若日後要上 CI（GitHub Actions macOS runner），憑證與 Provisioning Profile
   的匯出管理較繁瑣，初期建議維持手動建置。
-- 三台機器的 Flutter 版本要一致（見第 1 節）。
+- 三台機器的 Flutter 版本一律 **3.44.9**（見第 1 節，含版本不一致時的反推方式）。
 - 根目錄的 `docs/` 是 GitHub Pages 的隱私權政策（對外公開），
   開發文件請勿放進該目錄。
