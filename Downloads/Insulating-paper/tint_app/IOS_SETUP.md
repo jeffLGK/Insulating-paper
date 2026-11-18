@@ -175,6 +175,10 @@ flutter run -d <你的 iPhone 名稱>
 - [ ] 從相簿選照片 → 裁切 → 辨識（image_picker + image_cropper）
 - [ ] 權限彈窗的中文說明文字正確顯示
 - [ ] 線上查詢與認證標識圖片能正常載入 — 驗證 TWCA 憑證鏈在 iOS 生效
+- [ ] **關鍵字搜尋能正常回傳結果** — 驗證 iOS 的 libsqlite3 支援 `fts4`
+      （`app_database.dart` 的全文虛擬表用 fts4；Windows 桌機測試環境的
+      預編譯 sqlite3.dll 缺這個模組，導致 DB 相關測試在桌機全數失敗，
+      Android 實機則正常。iOS 實機務必實際搜尋一次確認）
 - [ ] 首次啟動自動同步（`_autoSyncIfNeeded`）正常完成
 - [ ] 同步完成的本地通知能顯示
 - [ ] 字體大小調整、深色模式、橫豎向切換
